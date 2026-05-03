@@ -1,10 +1,8 @@
 const { getDb } = require('../db');
 const { authMiddleware, optionalAuth, adminMiddleware } = require('../auth');
-const { isWithinDir } = require('../utils');
+const { isWithinDir, streamVideo, MEDIA_DIR } = require('../utils');
 const path = require('path');
 const fs = require('fs');
-
-const MEDIA_DIR = path.join(__dirname, '..', '..', 'media');
 
 async function mediaRoutes(fastify) {
   fastify.get('/api/media', { preHandler: optionalAuth }, async (request) => {
@@ -131,44 +129,7 @@ async function mediaRoutes(fastify) {
       return reply.status(404).send({ error: 'Video not found' });
     }
 
-    const filePath = media.file_path;
-    if (!isWithinDir(filePath, MEDIA_DIR)) {
-      return reply.status(403).send({ error: 'Invalid file path' });
-    }
-    if (!fs.existsSync(filePath)) {
-      return reply.status(404).send({ error: 'Video file not found on disk' });
-    }
-
-    const stat = fs.statSync(filePath);
-    const fileSize = stat.size;
-    const range = request.headers.range;
-
-    if (range) {
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
-        return reply.status(416).headers({ 'Content-Range': `bytes */${fileSize}` }).send({ error: 'Invalid range' });
-      }
-      const chunkSize = end - start + 1;
-
-      reply.status(206).headers({
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunkSize,
-        'Content-Type': 'video/mp4',
-      });
-
-      return fs.createReadStream(filePath, { start, end });
-    }
-
-    reply.headers({
-      'Content-Length': fileSize,
-      'Content-Type': 'video/mp4',
-      'Accept-Ranges': 'bytes',
-    });
-
-    return fs.createReadStream(filePath);
+    return streamVideo(request, reply, media.file_path);
   });
 
   fastify.patch('/api/media/:id', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {

@@ -1,10 +1,6 @@
 const { getDb } = require('../db');
 const { optionalAuth } = require('../auth');
-const { isWithinDir } = require('../utils');
-const fs = require('fs');
-const path = require('path');
-
-const MEDIA_DIR = path.join(__dirname, '..', '..', 'media');
+const { streamVideo, MEDIA_DIR } = require('../utils');
 
 async function seriesRoutes(fastify) {
   fastify.get('/api/series/:id/episodes', { preHandler: optionalAuth }, async (request, reply) => {
@@ -51,44 +47,7 @@ async function seriesRoutes(fastify) {
       return reply.status(404).send({ error: 'Episode not found' });
     }
 
-    const filePath = episode.file_path;
-    if (!isWithinDir(filePath, MEDIA_DIR)) {
-      return reply.status(403).send({ error: 'Invalid file path' });
-    }
-    if (!fs.existsSync(filePath)) {
-      return reply.status(404).send({ error: 'Video file not found on disk' });
-    }
-
-    const stat = fs.statSync(filePath);
-    const fileSize = stat.size;
-    const range = request.headers.range;
-
-    if (range) {
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
-        return reply.status(416).headers({ 'Content-Range': `bytes */${fileSize}` }).send({ error: 'Invalid range' });
-      }
-      const chunkSize = end - start + 1;
-
-      reply.status(206).headers({
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunkSize,
-        'Content-Type': 'video/mp4',
-      });
-
-      return fs.createReadStream(filePath, { start, end });
-    }
-
-    reply.headers({
-      'Content-Length': fileSize,
-      'Content-Type': 'video/mp4',
-      'Accept-Ranges': 'bytes',
-    });
-
-    return fs.createReadStream(filePath);
+    return streamVideo(request, reply, episode.file_path);
   });
 }
 

@@ -15,6 +15,9 @@ async function authRoutes(fastify) {
     if (password.length < 6) {
       return reply.status(400).send({ error: 'Password must be at least 6 characters' });
     }
+    if (password.length > 128) {
+      return reply.status(400).send({ error: 'Password must be 128 characters or fewer' });
+    }
     if (email.length > 254) {
       return reply.status(400).send({ error: 'Email is too long' });
     }
