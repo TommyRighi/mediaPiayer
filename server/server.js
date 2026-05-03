@@ -3,6 +3,7 @@ const cors = require('@fastify/cors');
 const multipart = require('@fastify/multipart');
 const statik = require('@fastify/static');
 const websocket = require('@fastify/websocket');
+const rateLimit = require('@fastify/rate-limit');
 const path = require('path');
 
 const authRoutes = require('./routes/auth');
@@ -24,11 +25,15 @@ const fastify = Fastify({
       options: { colorize: true },
     },
   },
-  bodyLimit: 100 * 1024 * 1024,
+  bodyLimit: 1 * 1024 * 1024,
 });
 
 async function start() {
-  await fastify.register(cors, { origin: true });
+  await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
+  const corsOrigin = process.env.NODE_ENV === 'production'
+    ? (process.env.CORS_ORIGIN || false)
+    : true;
+  await fastify.register(cors, { origin: corsOrigin });
   await fastify.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } });
   await fastify.register(websocket);
 

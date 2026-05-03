@@ -3,6 +3,8 @@ const { authMiddleware } = require('../auth');
 const { verifyToken } = require('../auth');
 const { nanoid } = require('nanoid');
 
+const partySockets = new Map();
+
 function generateInviteCode() {
   return nanoid(8);
 }
@@ -117,6 +119,11 @@ async function partyRoutes(fastify) {
       return;
     }
 
+    if (!partySockets.has(partyId)) {
+      partySockets.set(partyId, new Set());
+    }
+    partySockets.get(partyId).add(socket);
+
     socket.on('message', (rawMsg) => {
       try {
         const msg = JSON.parse(rawMsg.toString());
@@ -137,18 +144,27 @@ async function partyRoutes(fastify) {
           userId,
         });
 
-        fastify.websocketServer.clients.forEach((client) => {
-          if (client !== socket && client.readyState === 1) {
-            client.send(broadcast);
+        const sockets = partySockets.get(partyId);
+        if (sockets) {
+          for (const client of sockets) {
+            if (client !== socket && client.readyState === 1) {
+              client.send(broadcast);
+            }
           }
-        });
+        }
       } catch {
         // ignore malformed messages
       }
     });
 
     socket.on('close', () => {
-      // cleanup not strictly needed for stateless websocket
+      const sockets = partySockets.get(partyId);
+      if (sockets) {
+        sockets.delete(socket);
+        if (sockets.size === 0) {
+          partySockets.delete(partyId);
+        }
+      }
     });
   });
 }

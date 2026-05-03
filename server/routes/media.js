@@ -1,9 +1,15 @@
 const { getDb } = require('../db');
-const { authMiddleware, optionalAuth } = require('../auth');
+const { authMiddleware, optionalAuth, adminMiddleware } = require('../auth');
 const path = require('path');
 const fs = require('fs');
 
 const MEDIA_DIR = path.join(__dirname, '..', '..', 'media');
+
+function isWithinDir(filePath, dir) {
+  const resolved = path.resolve(filePath);
+  const resolvedDir = path.resolve(dir);
+  return resolved.startsWith(resolvedDir + path.sep) || resolved === resolvedDir;
+}
 
 async function mediaRoutes(fastify) {
   fastify.get('/api/media', { preHandler: optionalAuth }, async (request) => {
@@ -89,6 +95,9 @@ async function mediaRoutes(fastify) {
     }
 
     const filePath = media.file_path;
+    if (!isWithinDir(filePath, MEDIA_DIR)) {
+      return reply.status(403).send({ error: 'Invalid file path' });
+    }
     if (!fs.existsSync(filePath)) {
       return reply.status(404).send({ error: 'Video file not found on disk' });
     }
@@ -122,7 +131,7 @@ async function mediaRoutes(fastify) {
     return fs.createReadStream(filePath);
   });
 
-  fastify.patch('/api/media/:id', { preHandler: authMiddleware }, async (request, reply) => {
+  fastify.patch('/api/media/:id', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
     const db = getDb();
     const media = db.prepare('SELECT * FROM media WHERE id = ?').get(request.params.id);
     if (!media) {
@@ -130,9 +139,13 @@ async function mediaRoutes(fastify) {
     }
 
     const updates = {};
-    const fields = ['title', 'description', 'year', 'genre', 'poster_path', 'backdrop_path'];
+    const fields = ['title', 'description', 'year', 'genre'];
+    const maxLengths = { title: 200, description: 2000, genre: 100 };
     for (const field of fields) {
       if (request.body[field] !== undefined) {
+        if (maxLengths[field] && String(request.body[field]).length > maxLengths[field]) {
+          return reply.status(400).send({ error: `${field} must be ${maxLengths[field]} characters or fewer` });
+        }
         updates[field] = request.body[field];
       }
     }
@@ -150,7 +163,7 @@ async function mediaRoutes(fastify) {
     return { media: updated };
   });
 
-  fastify.delete('/api/media/:id', { preHandler: authMiddleware }, async (request, reply) => {
+  fastify.delete('/api/media/:id', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
     const db = getDb();
     const media = db.prepare('SELECT * FROM media WHERE id = ?').get(request.params.id);
     if (!media) {
@@ -160,18 +173,18 @@ async function mediaRoutes(fastify) {
     if (media.type === 'series') {
       const episodes = db.prepare('SELECT file_path FROM episodes WHERE series_id = ?').all(media.id);
       for (const ep of episodes) {
-        if (ep.file_path && fs.existsSync(ep.file_path)) {
+        if (ep.file_path && isWithinDir(ep.file_path, MEDIA_DIR) && fs.existsSync(ep.file_path)) {
           fs.unlinkSync(ep.file_path);
         }
       }
-    } else if (media.file_path && fs.existsSync(media.file_path)) {
+    } else if (media.file_path && isWithinDir(media.file_path, MEDIA_DIR) && fs.existsSync(media.file_path)) {
       fs.unlinkSync(media.file_path);
     }
 
-    if (media.poster_path && fs.existsSync(media.poster_path)) {
+    if (media.poster_path && isWithinDir(media.poster_path, MEDIA_DIR) && fs.existsSync(media.poster_path)) {
       fs.unlinkSync(media.poster_path);
     }
-    if (media.backdrop_path && fs.existsSync(media.backdrop_path)) {
+    if (media.backdrop_path && isWithinDir(media.backdrop_path, MEDIA_DIR) && fs.existsSync(media.backdrop_path)) {
       fs.unlinkSync(media.backdrop_path);
     }
 

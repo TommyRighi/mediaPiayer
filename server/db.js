@@ -25,6 +25,7 @@ function migrate() {
       password_hash TEXT NOT NULL,
       display_name  TEXT NOT NULL,
       avatar_url    TEXT,
+      role           TEXT NOT NULL DEFAULT 'viewer',
       created_at    TEXT DEFAULT (datetime('now'))
     );
 
@@ -94,6 +95,12 @@ function migrate() {
       file_path  TEXT NOT NULL
     );
   `);
+
+  const roleCol = db.prepare("PRAGMA table_info(users)").all().find(c => c.name === 'role');
+  if (!roleCol) {
+    db.exec(`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'viewer'`);
+    db.exec(`UPDATE users SET role = 'admin' WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)`);
+  }
 }
 
 function closeDb() {

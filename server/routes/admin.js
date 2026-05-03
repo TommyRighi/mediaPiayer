@@ -1,5 +1,5 @@
 const { getDb } = require('../db');
-const { authMiddleware } = require('../auth');
+const { authMiddleware, adminMiddleware } = require('../auth');
 const chokidar = require('chokidar');
 const path = require('path');
 const fs = require('fs');
@@ -94,7 +94,7 @@ async function scanMediaFolder() {
 }
 
 async function adminRoutes(fastify) {
-  fastify.post('/api/admin/scan', { preHandler: authMiddleware }, async () => {
+  fastify.post('/api/admin/scan', { preHandler: [authMiddleware, adminMiddleware] }, async () => {
     const results = await scanMediaFolder();
     return { success: true, ...results };
   });

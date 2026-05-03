@@ -2,7 +2,10 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { getDb } = require('./db');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'nextflix-dev-secret-change-in-production';
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET is required');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES = '7d';
 
 function createToken(user) {
@@ -31,7 +34,7 @@ async function authMiddleware(request, reply) {
   try {
     const payload = verifyToken(token);
     const db = getDb();
-    const user = db.prepare('SELECT id, email, display_name, avatar_url, created_at FROM users WHERE id = ?').get(payload.sub);
+    const user = db.prepare('SELECT id, email, display_name, avatar_url, role, created_at FROM users WHERE id = ?').get(payload.sub);
     if (!user) {
       reply.status(401).send({ error: 'User not found' });
       return;
@@ -49,9 +52,15 @@ async function optionalAuth(request) {
   try {
     const payload = verifyToken(token);
     const db = getDb();
-    const user = db.prepare('SELECT id, email, display_name, avatar_url, created_at FROM users WHERE id = ?').get(payload.sub);
+    const user = db.prepare('SELECT id, email, display_name, avatar_url, role, created_at FROM users WHERE id = ?').get(payload.sub);
     if (user) request.user = user;
   } catch { /* ignore */ }
 }
 
-module.exports = { createToken, verifyToken, hashPassword, comparePassword, authMiddleware, optionalAuth, JWT_SECRET };
+async function adminMiddleware(request, reply) {
+  if (!request.user || request.user.role !== 'admin') {
+    return reply.status(403).send({ error: 'Admin access required' });
+  }
+}
+
+module.exports = { createToken, verifyToken, hashPassword, comparePassword, authMiddleware, optionalAuth, adminMiddleware, JWT_SECRET };

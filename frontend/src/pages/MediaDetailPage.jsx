@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 
 export default function MediaDetailPage() {
   const { id } = useParams();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [media, setMedia] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -124,18 +124,22 @@ export default function MediaDetailPage() {
                   >
                     Start Watch Party
                   </button>
-                  <button
-                    onClick={() => setEditing(true)}
-                    className="text-gray-400 hover:text-white px-4 py-2.5 rounded border border-neutral-700 hover:border-white transition text-sm"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    className="text-gray-400 hover:text-red-500 px-4 py-2.5 rounded border border-neutral-700 hover:border-red-500 transition text-sm"
-                  >
-                    Delete
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => setEditing(true)}
+                      className="text-gray-400 hover:text-white px-4 py-2.5 rounded border border-neutral-700 hover:border-white transition text-sm"
+                    >
+                      Edit
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button
+                      onClick={handleDelete}
+                      className="text-gray-400 hover:text-red-500 px-4 py-2.5 rounded border border-neutral-700 hover:border-red-500 transition text-sm"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
 
                 {media.watchProgress && media.watchProgress.progress_seconds > 0 && (

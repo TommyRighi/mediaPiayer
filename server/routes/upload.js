@@ -1,13 +1,15 @@
 const { getDb } = require('../db');
-const { authMiddleware } = require('../auth');
+const { authMiddleware, adminMiddleware } = require('../auth');
 const { nanoid } = require('nanoid');
 const path = require('path');
 const fs = require('fs');
 
 const MEDIA_DIR = path.join(__dirname, '..', '..', 'media');
 
+const ALLOWED_EXTENSIONS = ['.mp4', '.mkv', '.webm', '.mov', '.avi'];
+
 async function uploadRoutes(fastify) {
-  fastify.post('/api/upload', { preHandler: authMiddleware }, async (request, reply) => {
+  fastify.post('/api/upload', { preHandler: [authMiddleware, adminMiddleware], bodyLimit: 100 * 1024 * 1024 }, async (request, reply) => {
     const data = await request.file();
     if (!data) {
       return reply.status(400).send({ error: 'No file uploaded' });
@@ -25,6 +27,10 @@ async function uploadRoutes(fastify) {
       return reply.status(400).send({ error: 'type and title are required fields' });
     }
 
+    if (title.trim().length > 200) {
+      return reply.status(400).send({ error: 'Title must be 200 characters or fewer' });
+    }
+
     if (!['movie', 'series'].includes(type)) {
       return reply.status(400).send({ error: 'type must be either movie or series' });
     }
@@ -32,6 +38,9 @@ async function uploadRoutes(fastify) {
     const db = getDb();
     const id = nanoid();
     const ext = path.extname(data.filename) || '.mp4';
+    if (!ALLOWED_EXTENSIONS.includes(ext.toLowerCase())) {
+      return reply.status(400).send({ error: `File type ${ext} not allowed. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}` });
+    }
     const safeName = `${id}${ext}`;
 
     let fileDir;

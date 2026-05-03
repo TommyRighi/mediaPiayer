@@ -3,13 +3,19 @@ const { createToken, hashPassword, comparePassword, authMiddleware } = require('
 const { nanoid } = require('nanoid');
 
 async function authRoutes(fastify) {
-  fastify.post('/api/auth/register', async (request, reply) => {
+  fastify.post('/api/auth/register', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { email, password, displayName } = request.body || {};
     if (!email || !password || !displayName) {
       return reply.status(400).send({ error: 'email, password, and displayName are required' });
     }
     if (password.length < 6) {
       return reply.status(400).send({ error: 'Password must be at least 6 characters' });
+    }
+    if (email.length > 254) {
+      return reply.status(400).send({ error: 'Email is too long' });
+    }
+    if (displayName.trim().length > 50) {
+      return reply.status(400).send({ error: 'Display name must be 50 characters or fewer' });
     }
 
     const db = getDb();
@@ -20,17 +26,19 @@ async function authRoutes(fastify) {
 
     const id = nanoid();
     const passwordHash = await hashPassword(password);
+    const userCount = db.prepare('SELECT COUNT(*) AS count FROM users').get().count;
+    const role = userCount === 0 ? 'admin' : 'viewer';
 
-    db.prepare('INSERT INTO users (id, email, password_hash, display_name) VALUES (?, ?, ?, ?)').run(
-      id, email.toLowerCase().trim(), passwordHash, displayName.trim()
+    db.prepare('INSERT INTO users (id, email, password_hash, display_name, role) VALUES (?, ?, ?, ?, ?)').run(
+      id, email.toLowerCase().trim(), passwordHash, displayName.trim(), role
     );
 
-    const user = db.prepare('SELECT id, email, display_name, avatar_url, created_at FROM users WHERE id = ?').get(id);
+    const user = db.prepare('SELECT id, email, display_name, avatar_url, role, created_at FROM users WHERE id = ?').get(id);
     const token = createToken(user);
     return { token, user };
   });
 
-  fastify.post('/api/auth/login', async (request, reply) => {
+  fastify.post('/api/auth/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { email, password } = request.body || {};
     if (!email || !password) {
       return reply.status(400).send({ error: 'email and password are required' });
@@ -61,13 +69,19 @@ async function authRoutes(fastify) {
     const db = getDb();
 
     if (displayName) {
+      if (displayName.trim().length > 50) {
+        return reply.status(400).send({ error: 'Display name must be 50 characters or fewer' });
+      }
       db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(displayName.trim(), request.user.id);
     }
     if (avatarUrl !== undefined) {
+      if (avatarUrl && !/^https?:\/\/.+/.test(avatarUrl)) {
+        return reply.status(400).send({ error: 'avatarUrl must be a valid URL' });
+      }
       db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(avatarUrl, request.user.id);
     }
 
-    const user = db.prepare('SELECT id, email, display_name, avatar_url, created_at FROM users WHERE id = ?').get(request.user.id);
+    const user = db.prepare('SELECT id, email, display_name, avatar_url, role, created_at FROM users WHERE id = ?').get(request.user.id);
     return { user };
   });
 }

@@ -1,6 +1,15 @@
 const { getDb } = require('../db');
 const { optionalAuth } = require('../auth');
 const fs = require('fs');
+const path = require('path');
+
+const MEDIA_DIR = path.join(__dirname, '..', '..', 'media');
+
+function isWithinDir(filePath, dir) {
+  const resolved = path.resolve(filePath);
+  const resolvedDir = path.resolve(dir);
+  return resolved.startsWith(resolvedDir + path.sep) || resolved === resolvedDir;
+}
 
 async function seriesRoutes(fastify) {
   fastify.get('/api/series/:id/episodes', { preHandler: optionalAuth }, async (request, reply) => {
@@ -39,6 +48,9 @@ async function seriesRoutes(fastify) {
     }
 
     const filePath = episode.file_path;
+    if (!isWithinDir(filePath, MEDIA_DIR)) {
+      return reply.status(403).send({ error: 'Invalid file path' });
+    }
     if (!fs.existsSync(filePath)) {
       return reply.status(404).send({ error: 'Video file not found on disk' });
     }

@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useState } from 'react';
 
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -14,8 +14,8 @@ export default function Layout() {
 
         <div className="flex items-center gap-6 text-sm text-gray-300">
           <Link to="/" className="hover:text-white transition">Home</Link>
-          <Link to="/upload" className="hover:text-white transition">Upload</Link>
-          <Link to="/admin" className="hover:text-white transition">Admin</Link>
+          {isAdmin && <Link to="/upload" className="hover:text-white transition">Upload</Link>}
+          {isAdmin && <Link to="/admin" className="hover:text-white transition">Admin</Link>}
         </div>
 
         <div className="ml-auto relative">
