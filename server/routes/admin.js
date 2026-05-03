@@ -56,11 +56,17 @@ async function scanMediaFolder() {
 
       if (seasonFolders.length === 0) continue;
 
-      const seriesId = nanoid();
-      db.prepare(
-        `INSERT INTO media (id, title, type, genre) VALUES (?, ?, 'series', '')`
-      ).run(seriesId, showName);
-      results.series++;
+      let seriesId;
+      const existing = db.prepare('SELECT id FROM media WHERE title = ? AND type = ?').get(showName, 'series');
+      if (existing) {
+        seriesId = existing.id;
+      } else {
+        seriesId = nanoid();
+        db.prepare(
+          `INSERT INTO media (id, title, type, genre) VALUES (?, ?, 'series', '')`
+        ).run(seriesId, showName);
+        results.series++;
+      }
 
       for (const seasonFolder of seasonFolders) {
         const seasonMatch = seasonFolder.match(/(\d+)/);

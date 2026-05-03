@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, getToken } from '../api';
-import { useAuth } from '../context/AuthContext';
 
 export default function PartyRoom() {
   const { partyId } = useParams();
-  const { user } = useAuth();
   const navigate = useNavigate();
   const videoRef = useRef(null);
   const wsRef = useRef(null);
@@ -24,8 +22,8 @@ export default function PartyRoom() {
     api.parties.get(partyId).then((data) => {
       setParty(data.party);
       setMembers(data.members);
-    }).catch(() => navigate('/'));
-  }, [partyId]);
+}).catch(() => navigate('/'));
+  }, [partyId, navigate]);
 
   useEffect(() => {
     if (!partyId || !token) return;
@@ -52,7 +50,7 @@ export default function PartyRoom() {
           video.currentTime = msg.position;
         }
         setSynced(true);
-      } catch {}
+      } catch (err) { console.error('WS message error:', err); }
     };
 
     ws.onclose = () => {};

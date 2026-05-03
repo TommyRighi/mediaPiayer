@@ -1,15 +1,10 @@
 const { getDb } = require('../db');
 const { authMiddleware, optionalAuth, adminMiddleware } = require('../auth');
+const { isWithinDir } = require('../utils');
 const path = require('path');
 const fs = require('fs');
 
 const MEDIA_DIR = path.join(__dirname, '..', '..', 'media');
-
-function isWithinDir(filePath, dir) {
-  const resolved = path.resolve(filePath);
-  const resolvedDir = path.resolve(dir);
-  return resolved.startsWith(resolvedDir + path.sep) || resolved === resolvedDir;
-}
 
 async function mediaRoutes(fastify) {
   fastify.get('/api/media', { preHandler: optionalAuth }, async (request) => {
@@ -35,18 +30,50 @@ async function mediaRoutes(fastify) {
     sql += ' ORDER BY created_at DESC';
     const media = db.prepare(sql).all(...params);
 
-    if (request.user) {
-      for (const item of media) {
-        if (item.type === 'movie') {
-          const progress = db.prepare(
-            'SELECT progress_seconds, completed FROM watch_progress WHERE user_id = ? AND media_id = ?'
-          ).get(request.user.id, item.id);
-          item.watchProgress = progress || null;
+    if (request.user && media.length > 0) {
+      const movieIds = media.filter(m => m.type === 'movie').map(m => m.id);
+      if (movieIds.length > 0) {
+        const progressMap = getDb().prepare(
+          `SELECT media_id, progress_seconds, completed FROM watch_progress
+           WHERE user_id = ? AND media_id IN (${movieIds.map(() => '?').join(',')}) AND episode_id IS NULL`
+        ).all(request.user.id, ...movieIds);
+        const progressByMedia = {};
+        for (const p of progressMap) {
+          progressByMedia[p.media_id] = { progress_seconds: p.progress_seconds, completed: p.completed };
+        }
+        for (const item of media) {
+          if (item.type === 'movie') {
+            item.watchProgress = progressByMedia[item.id] || null;
+          }
         }
       }
     }
 
     return { media };
+  });
+
+  fastify.get('/api/media/:id/poster', { preHandler: optionalAuth }, async (request, reply) => {
+    const db = getDb();
+    const media = db.prepare('SELECT poster_path FROM media WHERE id = ?').get(request.params.id);
+    if (!media || !media.poster_path) {
+      return reply.status(404).send({ error: 'Poster not found' });
+    }
+
+    const filePath = media.poster_path;
+    if (!isWithinDir(filePath, MEDIA_DIR)) {
+      return reply.status(403).send({ error: 'Invalid file path' });
+    }
+    if (!fs.existsSync(filePath)) {
+      return reply.status(404).send({ error: 'Poster file not found on disk' });
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeTypes = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' };
+    reply.headers({
+      'Content-Type': mimeTypes[ext] || 'application/octet-stream',
+      'Cache-Control': 'public, max-age=86400',
+    });
+    return fs.createReadStream(filePath);
   });
 
   fastify.get('/api/media/:id', { preHandler: optionalAuth }, async (request, reply) => {
@@ -66,14 +93,24 @@ async function mediaRoutes(fastify) {
         if (!seasons[ep.season_number]) {
           seasons[ep.season_number] = [];
         }
-        if (request.user) {
-          const progress = db.prepare(
-            'SELECT progress_seconds, completed FROM watch_progress WHERE user_id = ? AND media_id = ? AND episode_id = ?'
-          ).get(request.user.id, media.id, ep.id);
-          ep.watchProgress = progress || null;
-        }
         seasons[ep.season_number].push(ep);
       }
+
+      if (request.user && episodes.length > 0) {
+        const epIds = episodes.map(ep => ep.id);
+        const progressRows = db.prepare(
+          `SELECT episode_id, progress_seconds, completed FROM watch_progress
+           WHERE user_id = ? AND media_id = ? AND episode_id IN (${epIds.map(() => '?').join(',')})`
+        ).all(request.user.id, media.id, ...epIds);
+        const progressByEp = {};
+        for (const p of progressRows) {
+          progressByEp[p.episode_id] = { progress_seconds: p.progress_seconds, completed: p.completed };
+        }
+        for (const ep of episodes) {
+          ep.watchProgress = progressByEp[ep.id] || null;
+        }
+      }
+
       media.seasons = seasons;
     }
 
@@ -110,6 +147,9 @@ async function mediaRoutes(fastify) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
+        return reply.status(416).headers({ 'Content-Range': `bytes */${fileSize}` }).send({ error: 'Invalid range' });
+      }
       const chunkSize = end - start + 1;
 
       reply.status(206).headers({

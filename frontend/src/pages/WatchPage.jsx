@@ -1,12 +1,10 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import { useAuth } from '../context/AuthContext';
 
 export default function WatchPage() {
   const { mediaId, episodeId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const videoRef = useRef(null);
   const [media, setMedia] = useState(null);
   const [episode, setEpisode] = useState(null);
@@ -24,7 +22,7 @@ export default function WatchPage() {
           if (ep) { setEpisode(ep); break; }
         }
       }
-    }).catch(() => {});
+    }).catch((err) => { console.error('Failed to load media:', err); });
   }, [mediaId, episodeId]);
 
   const reportProgress = useCallback(() => {
@@ -32,7 +30,7 @@ export default function WatchPage() {
     if (!video) return;
     const seconds = Math.floor(video.currentTime);
     const completed = video.ended;
-    api.watch.progress(mediaId, episodeId || null, seconds, completed).catch(() => {});
+    api.watch.progress(mediaId, episodeId || null, seconds, completed).catch((err) => { console.error('Failed to report progress:', err); });
   }, [mediaId, episodeId]);
 
   useEffect(() => {

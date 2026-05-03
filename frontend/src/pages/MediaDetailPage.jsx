@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 
 export default function MediaDetailPage() {
   const { id } = useParams();
-  const { user, isAdmin } = useAuth();
+  const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [media, setMedia] = useState(null);
   const [editing, setEditing] = useState(false);

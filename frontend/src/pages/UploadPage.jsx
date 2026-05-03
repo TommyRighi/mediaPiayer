@@ -16,10 +16,11 @@ export default function UploadPage() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
 
   async function handleSubmit(e) {
     e.preventDefault();
-    const file = fileRef.current?.files?.[0];
+    const file = selectedFile;
     if (!file) { setError('Please select a file'); return; }
     if (!title.trim()) { setError('Title is required'); return; }
 
@@ -155,11 +156,11 @@ export default function UploadPage() {
             <label className="block text-sm text-gray-400 mb-1">Video File</label>
             <div className="border-2 border-dashed border-neutral-700 rounded-lg p-8 text-center hover:border-neutral-500 transition cursor-pointer"
               onClick={() => fileRef.current?.click()}>
-              <input ref={fileRef} type="file" accept="video/*" className="hidden" />
+              <input ref={fileRef} type="file" accept="video/*" className="hidden" onChange={(e) => setSelectedFile(e.target.files[0] || null)} />
               <p className="text-gray-400 mb-2">Click to select a video file</p>
               <p className="text-gray-500 text-xs">MP4, MKV, WebM</p>
-              {fileRef.current?.files?.[0] && (
-                <p className="text-white mt-2">{fileRef.current.files[0].name}</p>
+              {selectedFile && (
+                <p className="text-white mt-2">{selectedFile.name}</p>
               )}
             </div>
           </div>

@@ -8,13 +8,17 @@ async function authRoutes(fastify) {
     if (!email || !password || !displayName) {
       return reply.status(400).send({ error: 'email, password, and displayName are required' });
     }
+    const trimmedName = (displayName || '').trim();
+    if (!trimmedName) {
+      return reply.status(400).send({ error: 'Display name is required' });
+    }
     if (password.length < 6) {
       return reply.status(400).send({ error: 'Password must be at least 6 characters' });
     }
     if (email.length > 254) {
       return reply.status(400).send({ error: 'Email is too long' });
     }
-    if (displayName.trim().length > 50) {
+    if (trimmedName.length > 50) {
       return reply.status(400).send({ error: 'Display name must be 50 characters or fewer' });
     }
 
@@ -30,7 +34,7 @@ async function authRoutes(fastify) {
     const role = userCount === 0 ? 'admin' : 'viewer';
 
     db.prepare('INSERT INTO users (id, email, password_hash, display_name, role) VALUES (?, ?, ?, ?, ?)').run(
-      id, email.toLowerCase().trim(), passwordHash, displayName.trim(), role
+      id, email.toLowerCase().trim(), passwordHash, trimmedName, role
     );
 
     const user = db.prepare('SELECT id, email, display_name, avatar_url, role, created_at FROM users WHERE id = ?').get(id);
@@ -45,7 +49,7 @@ async function authRoutes(fastify) {
     }
 
     const db = getDb();
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase().trim());
+    const user = db.prepare('SELECT id, email, password_hash, display_name, avatar_url, role, created_at FROM users WHERE email = ?').get(email.toLowerCase().trim());
     if (!user) {
       return reply.status(401).send({ error: 'Invalid email or password' });
     }
@@ -55,8 +59,8 @@ async function authRoutes(fastify) {
       return reply.status(401).send({ error: 'Invalid email or password' });
     }
 
-    const token = createToken(user);
     const { password_hash, ...safeUser } = user;
+    const token = createToken(safeUser);
     return { token, user: safeUser };
   });
 

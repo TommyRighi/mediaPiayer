@@ -5,18 +5,17 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const initialToken = getToken();
+  const [loading, setLoading] = useState(!!initialToken);
 
   useEffect(() => {
-    const t = getToken();
-    if (t) {
+    if (initialToken) {
       api.auth.me()
         .then((data) => setUser(data.user))
         .catch(() => clearToken())
         .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function login(email, password) {
@@ -53,6 +52,7 @@ export function AuthProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');

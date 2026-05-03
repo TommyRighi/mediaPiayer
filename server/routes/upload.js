@@ -50,7 +50,8 @@ async function uploadRoutes(fastify) {
       fileDir = path.join(MEDIA_DIR, 'movies');
       filePath = path.join(fileDir, safeName);
     } else {
-      fileDir = MEDIA_DIR;
+      const safeTitle = title.trim().replace(/[^a-zA-Z0-9]/g, '_');
+      fileDir = path.join(MEDIA_DIR, 'series', safeTitle);
       filePath = path.join(fileDir, safeName);
     }
 
@@ -64,6 +65,7 @@ async function uploadRoutes(fastify) {
       });
       data.file.on('end', () => resolve(size));
       data.file.on('error', reject);
+      writeStream.on('error', reject);
       data.file.pipe(writeStream);
     });
 

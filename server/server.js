@@ -25,7 +25,7 @@ const fastify = Fastify({
       options: { colorize: true },
     },
   },
-  bodyLimit: 1 * 1024 * 1024,
+  bodyLimit: 100 * 1024 * 1024,
 });
 
 async function start() {

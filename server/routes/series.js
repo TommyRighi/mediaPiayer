@@ -1,15 +1,10 @@
 const { getDb } = require('../db');
 const { optionalAuth } = require('../auth');
+const { isWithinDir } = require('../utils');
 const fs = require('fs');
 const path = require('path');
 
 const MEDIA_DIR = path.join(__dirname, '..', '..', 'media');
-
-function isWithinDir(filePath, dir) {
-  const resolved = path.resolve(filePath);
-  const resolvedDir = path.resolve(dir);
-  return resolved.startsWith(resolvedDir + path.sep) || resolved === resolvedDir;
-}
 
 async function seriesRoutes(fastify) {
   fastify.get('/api/series/:id/episodes', { preHandler: optionalAuth }, async (request, reply) => {
@@ -28,13 +23,22 @@ async function seriesRoutes(fastify) {
       if (!seasons[ep.season_number]) {
         seasons[ep.season_number] = [];
       }
-      if (request.user) {
-        const progress = db.prepare(
-          'SELECT progress_seconds, completed FROM watch_progress WHERE user_id = ? AND episode_id = ?'
-        ).get(request.user.id, ep.id);
-        ep.watchProgress = progress || null;
-      }
       seasons[ep.season_number].push(ep);
+    }
+
+    if (request.user && episodes.length > 0) {
+      const epIds = episodes.map(ep => ep.id);
+      const progressRows = db.prepare(
+        `SELECT episode_id, progress_seconds, completed FROM watch_progress
+         WHERE user_id = ? AND episode_id IN (${epIds.map(() => '?').join(',')})`
+      ).all(request.user.id, ...epIds);
+      const progressByEp = {};
+      for (const p of progressRows) {
+        progressByEp[p.episode_id] = { progress_seconds: p.progress_seconds, completed: p.completed };
+      }
+      for (const ep of episodes) {
+        ep.watchProgress = progressByEp[ep.id] || null;
+      }
     }
 
     return { series, seasons };
@@ -63,6 +67,9 @@ async function seriesRoutes(fastify) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
+        return reply.status(416).headers({ 'Content-Range': `bytes */${fileSize}` }).send({ error: 'Invalid range' });
+      }
       const chunkSize = end - start + 1;
 
       reply.status(206).headers({

@@ -4,14 +4,15 @@
   "description": "Self-hosted Netflix-like media streaming from a Raspberry Pi",
   "main": "server/server.js",
   "scripts": {
-    "dev": "node --watch server/server.js",
-    "start": "node server/server.js",
+    "dev": "node --watch --env-file=.env server/server.js",
+    "dev:all": "concurrently -n server,client -c cyan,magenta \"npm run dev\" \"cd frontend && npm run dev\"",
+    "start": "node --env-file=.env server/server.js",
     "build": "cd frontend && npm run build"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
     "@fastify/multipart": "^8.1.0",
-    "@fastify/rate-limit": "^10.3.0",
+    "@fastify/rate-limit": "^9.1.0",
     "@fastify/static": "^7.0.4",
     "@fastify/websocket": "^10.0.1",
     "bcrypt": "^5.1.1",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.10",
+    "concurrently": "^9.2.1",
     "pino-pretty": "^13.1.3"
   }
 }

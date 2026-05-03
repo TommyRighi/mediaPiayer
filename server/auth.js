@@ -63,4 +63,4 @@ async function adminMiddleware(request, reply) {
   }
 }
 
-module.exports = { createToken, verifyToken, hashPassword, comparePassword, authMiddleware, optionalAuth, adminMiddleware, JWT_SECRET };
+module.exports = { createToken, verifyToken, hashPassword, comparePassword, authMiddleware, optionalAuth, adminMiddleware };
