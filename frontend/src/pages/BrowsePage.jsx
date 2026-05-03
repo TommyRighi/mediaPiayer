@@ -39,7 +39,7 @@ export default function BrowsePage() {
     return (
       <div className="flex items-center justify-center min-h-screen px-8 pt-20">
         <div className="text-center">
-          <h2 className="text-3xl font-medium mb-3">Welcome to Nextflix</h2>
+          <h2 className="text-3xl font-medium mb-3">Welcome to MediaPiayer</h2>
           <p className="text-gray-400 mb-6">Your library is empty. Upload some media to get started.</p>
           <Link
             to="/upload"

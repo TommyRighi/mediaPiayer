@@ -2,7 +2,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
-const DB_PATH = path.join(__dirname, '..', 'data', 'nextflix.db');
+const DB_PATH = path.join(__dirname, '..', 'data', 'mediapiayer.db');
 
 let db;
 

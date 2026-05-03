@@ -1,4 +1,4 @@
-# Nextflix at Home — Design Spec
+# MediaPiayer — Design Spec
 
 **Date:** 2026-05-03
 **Author:** Tommaso Righi
@@ -26,7 +26,7 @@ A single Node.js process on the Pi serving a React frontend, video files via HTT
 ┌──────────────────────────────────────────────────────────────┐
 │                    Raspberry Pi 3 B+                          │
 │  ┌─────────────────────────────────────────────────────────┐ │
-│  │              Nextflix Server (Node.js)                   │ │
+│  │              MediaPiayer Server (Node.js)                 │ │
 │  │  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐  │ │
 │  │  │  Fastify  │  │ SQLite   │  │  /media/             │  │ │
 │  │  │  HTTP API │  │   DB     │  │   movies/   series/  │  │ │
@@ -293,7 +293,7 @@ React SPA built with Vite + React Router. Dark theme, Netflix-inspired design.
 ## Storage Layout (on Pi)
 
 ```
-/home/pi/nextflix/
+/home/pi/mediapiayer/
 ├── server/              # Node.js backend
 │   ├── server.js        # entry point
 │   ├── db.js            # SQLite setup + migrations
@@ -315,7 +315,7 @@ React SPA built with Vite + React Router. Dark theme, Netflix-inspired design.
 ### OS Setup
 - **OS:** Raspberry Pi OS Lite (64-bit, headless)
 - **Enable:** SSH
-- **Hostname:** `nextflix-pi`
+- **Hostname:** `mediapiayer`
 
 ### Dependencies
 ```bash
@@ -326,8 +326,8 @@ sudo tailscale up
 
 ### App Install
 ```bash
-git clone <repo> /home/pi/nextflix
-cd /home/pi/nextflix
+git clone <repo> /home/pi/mediapiayer
+cd /home/pi/mediapiayer
 npm install
 npm run build
 mkdir -p media/movies media/series media/posters
@@ -336,16 +336,16 @@ node server.js   # runs on port 3000
 
 ### Auto-start (systemd)
 ```ini
-# /etc/systemd/system/nextflix.service
+# /etc/systemd/system/mediapiayer.service
 [Unit]
-Description=Nextflix Server
+Description=MediaPiayer Server
 After=network.target
 
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/nextflix
-ExecStart=/usr/bin/node /home/pi/nextflix/server/server.js
+WorkingDirectory=/home/pi/mediapiayer
+ExecStart=/usr/bin/node /home/pi/mediapiayer/server/server.js
 Restart=on-failure
 RestartSec=5
 
@@ -354,14 +354,14 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-sudo systemctl enable --now nextflix.service
+sudo systemctl enable --now mediapiayer.service
 ```
 
 ### Access
-With Tailscale running, the app is reachable at `http://nextflix-pi:3000` from any device on your tailnet.
+With Tailscale running, the app is reachable at `http://mediapiayer:3000` from any device on your tailnet.
 
 ### Storage
-External USB drive recommended for `/home/pi/nextflix/media/` to avoid wearing out the SD card with frequent writes from uploads.
+External USB drive recommended for `/home/pi/mediapiayer/media/` to avoid wearing out the SD card with frequent writes from uploads.
 
 ---
 

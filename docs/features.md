@@ -1,4 +1,4 @@
-# Nextflix — Future Feature Prompts
+# MediaPiayer — Future Feature Prompts
 
 Each section is a self-contained prompt you can feed to an AI assistant to implement the feature on top of the existing codebase.
 

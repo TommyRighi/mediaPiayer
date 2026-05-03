@@ -1,5 +1,5 @@
 {
-  "name": "nextflix-at-home",
+  "name": "mediapiayer",
   "version": "1.0.0",
   "description": "Self-hosted Netflix-like media streaming from a Raspberry Pi",
   "main": "server/server.js",

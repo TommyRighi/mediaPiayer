@@ -15,7 +15,7 @@ npm run dev           # frontend/ — Vite on :5173, proxies /api → :3000
 
 - **Backend:** Fastify (CommonJS, `require`/`module.exports`) in `server/`
 - **Frontend:** React 19 + Vite 8 (ESM, `import`/`export`) in `frontend/`
-- **Database:** SQLite via `better-sqlite3`, auto-created at `data/nextflix.db` on first run
+- **Database:** SQLite via `better-sqlite3`, auto-created at `data/mediapiayer.db` on first run
 - **No TypeScript** — entire project is plain JavaScript
 - **No test framework** — no `npm test`, no test runners configured
 
