@@ -1,0 +1,2 @@
+Coma mai la cartella media deve essere nella repo?
+Non può essere una cartella configurabile sul rapsberry pi?

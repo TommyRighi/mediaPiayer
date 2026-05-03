@@ -20,3 +20,25 @@ build/
 
 # Logs
 *.log
+
+# Test coverage
+coverage/
+
+# Database
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Uploaded media
+media/*
+!media/movies/
+!media/posters/
+!media/series/
+media/movies/*
+media/posters/*
+media/series/*
+!media/**/.gitkeep
+
+# TypeScript
+*.tsbuildinfo
