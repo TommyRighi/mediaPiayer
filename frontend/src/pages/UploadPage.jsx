@@ -82,103 +82,101 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="min-h-screen pt-20 px-4 md:px-8 pb-16">
+    <div className="min-h-[60vh] pt-8 px-4 md:px-8 pb-16">
       <div className="max-w-xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Upload Media</h1>
+        <h1 className="text-2xl font-bold mb-8" style={{ color: 'var(--jf-text-primary)' }}>Upload Media</h1>
 
         {error && (
-          <div className="bg-red-600/20 border border-red-600 text-red-400 rounded px-4 py-3 mb-6">
+          <div className="rounded px-4 py-3 mb-6 text-sm" style={{ background: 'rgba(194,40,40,0.15)', border: '1px solid var(--jf-error)', color: '#ef5350' }}>
             {error}
           </div>
         )}
         {success && (
-          <div className="bg-green-600/20 border border-green-600 text-green-400 rounded px-4 py-3 mb-6">
+          <div className="rounded px-4 py-3 mb-6 text-sm" style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid var(--jf-primary)', color: 'var(--jf-primary)' }}>
             {success}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Type</label>
-            <div className="flex gap-4">
+            <label className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Type</label>
+            <div className="flex gap-3">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="radio" name="type" value="movie" checked={type === 'movie'} onChange={() => setType('movie')} className="accent-red-600" />
-                <span className="text-white">Movie</span>
+                <input type="radio" name="type" value="movie" checked={type === 'movie'} onChange={() => setType('movie')} style={{ accentColor: 'var(--jf-primary)' }} />
+                <span style={{ color: 'var(--jf-text-primary)' }}>Movie</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="radio" name="type" value="series" checked={type === 'series'} onChange={() => setType('series')} className="accent-red-600" />
-                <span className="text-white">Series</span>
+                <input type="radio" name="type" value="series" checked={type === 'series'} onChange={() => setType('series')} style={{ accentColor: 'var(--jf-primary)' }} />
+                <span style={{ color: 'var(--jf-text-primary)' }}>Series</span>
               </label>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Title</label>
-            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-neutral-800 border border-neutral-700 rounded px-4 py-3 text-white focus:outline-none focus:border-white" required />
+            <label className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Title</label>
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="jf-input" required />
           </div>
 
           {type === 'series' && (
             <div className="flex gap-4">
               <div className="flex-1">
-                <label className="block text-sm text-gray-400 mb-1">Season</label>
-                <input type="number" value={seasonNumber} onChange={(e) => setSeasonNumber(e.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded px-4 py-3 text-white focus:outline-none focus:border-white" required />
+                <label className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Season</label>
+                <input type="number" value={seasonNumber} onChange={(e) => setSeasonNumber(e.target.value)} className="jf-input" required />
               </div>
               <div className="flex-1">
-                <label className="block text-sm text-gray-400 mb-1">Episode</label>
-                <input type="number" value={episodeNumber} onChange={(e) => setEpisodeNumber(e.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded px-4 py-3 text-white focus:outline-none focus:border-white" required />
+                <label className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Episode</label>
+                <input type="number" value={episodeNumber} onChange={(e) => setEpisodeNumber(e.target.value)} className="jf-input" required />
               </div>
             </div>
           )}
 
           <div className="flex gap-4">
             <div className="flex-1">
-              <label className="block text-sm text-gray-400 mb-1">Year</label>
-              <input type="number" value={year} onChange={(e) => setYear(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded px-4 py-3 text-white focus:outline-none focus:border-white" />
+              <label className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Year</label>
+              <input type="number" value={year} onChange={(e) => setYear(e.target.value)} className="jf-input" />
             </div>
             <div className="flex-1">
-              <label className="block text-sm text-gray-400 mb-1">Genre</label>
-              <input type="text" value={genre} onChange={(e) => setGenre(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded px-4 py-3 text-white focus:outline-none focus:border-white" />
+              <label className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Genre</label>
+              <input type="text" value={genre} onChange={(e) => setGenre(e.target.value)} className="jf-input" />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Description</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)}
-              className="w-full bg-neutral-800 border border-neutral-700 rounded px-4 py-3 text-white focus:outline-none focus:border-white" rows={3} />
+            <label className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Description</label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="jf-input" rows={3} />
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Video File</label>
-            <div className="border-2 border-dashed border-neutral-700 rounded-lg p-8 text-center hover:border-neutral-500 transition cursor-pointer"
-              onClick={() => fileRef.current?.click()}>
+            <label className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Video File</label>
+            <div
+              className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition"
+              style={{ borderColor: 'rgba(255,255,255,0.12)' }}
+              onMouseEnter={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'}
+              onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'}
+              onClick={() => fileRef.current?.click()}
+            >
               <input ref={fileRef} type="file" accept="video/*" className="hidden" onChange={(e) => setSelectedFile(e.target.files[0] || null)} />
-              <p className="text-gray-400 mb-2">Click to select a video file</p>
-              <p className="text-gray-500 text-xs">MP4, MKV, WebM</p>
+              <p style={{ color: 'var(--jf-text-secondary)' }} className="mb-2">Click to select a video file</p>
+              <p className="text-xs" style={{ color: 'var(--jf-text-muted)' }}>MP4, MKV, WebM</p>
               {selectedFile && (
-                <p className="text-white mt-2">{selectedFile.name}</p>
+                <p className="mt-2" style={{ color: 'var(--jf-text-primary)' }}>{selectedFile.name}</p>
               )}
             </div>
           </div>
 
           {uploading && (
-            <div className="bg-neutral-800 rounded-lg p-3">
-              <div className="flex items-center justify-between text-sm text-gray-400 mb-1">
+            <div className="rounded-lg p-3" style={{ background: 'var(--jf-surface)' }}>
+              <div className="flex items-center justify-between text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>
                 <span>Uploading...</span>
                 <span>{progress}%</span>
               </div>
-              <div className="h-2 bg-neutral-700 rounded-full overflow-hidden">
-                <div className="h-full bg-red-600 rounded-full transition-all" style={{ width: `${progress}%` }} />
+              <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.12)' }}>
+                <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, background: 'var(--jf-primary)' }} />
               </div>
             </div>
           )}
 
-          <button type="submit" disabled={uploading}
-            className="bg-red-600 hover:bg-red-700 text-white font-medium rounded py-3 transition disabled:opacity-50">
+          <button type="submit" disabled={uploading} className="jf-btn-primary">
             {uploading ? 'Uploading...' : 'Upload'}
           </button>
         </form>

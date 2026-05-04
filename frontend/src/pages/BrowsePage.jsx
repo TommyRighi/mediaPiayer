@@ -3,14 +3,57 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import MediaCard from '../components/MediaCard';
 
-function MediaRow({ title, items }) {
+function MediaRow({ title, items, variant = 'portrait' }) {
+  const scrollRef = useState(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  function updateScroll(el) {
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 0);
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 1);
+  }
+
+  function scrollBy(dir) {
+    const el = scrollRef[0]?.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: 'smooth' });
+  }
+
   return (
     <div className="mb-8">
-      <h3 className="text-lg font-medium text-gray-200 mb-3 px-4 md:px-8">{title}</h3>
-      <div className="flex gap-1 overflow-x-auto px-4 md:px-8 pb-2 scroll-smooth scrollbar-thin">
-        {items.map((item) => (
-          <MediaCard key={item.id} media={item} progress={item.watchProgress} />
-        ))}
+      <div className="flex items-center justify-between px-4 md:px-8 mb-2">
+        <h3 className="text-lg font-medium" style={{ color: 'var(--jf-text-primary)' }}>{title}</h3>
+      </div>
+      <div className="relative group/row">
+        {canScrollLeft && (
+          <button
+            onClick={() => scrollBy(-1)}
+            className="absolute left-0 top-0 bottom-0 w-10 z-10 flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity"
+            style={{ background: 'linear-gradient(to right, var(--jf-bg), transparent)' }}
+          >
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="rgba(255,255,255,0.8)"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" /></svg>
+          </button>
+        )}
+        <div
+          ref={(el) => { scrollRef[0] = { current: el }; if (el) updateScroll(el); }}
+          className="flex gap-2 overflow-x-auto px-4 md:px-8 pb-2 scroll-smooth"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          onScroll={(e) => updateScroll(e.currentTarget)}
+        >
+          {items.map((item) => (
+            <MediaCard key={item.id} media={item} progress={item.watchProgress} variant={variant} />
+          ))}
+        </div>
+        {canScrollRight && (
+          <button
+            onClick={() => scrollBy(1)}
+            className="absolute right-0 top-0 bottom-0 w-10 z-10 flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity"
+            style={{ background: 'linear-gradient(to left, var(--jf-bg), transparent)' }}
+          >
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="rgba(255,255,255,0.8)"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" /></svg>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -37,14 +80,11 @@ export default function BrowsePage() {
 
   if (media.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-screen px-4 md:px-8 pt-20">
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
         <div className="text-center">
-          <h2 className="text-2xl md:text-3xl font-medium mb-3">Welcome to MediaPiayer</h2>
-          <p className="text-gray-400 mb-6">Your library is empty. Upload some media to get started.</p>
-          <Link
-            to="/upload"
-            className="inline-block bg-red-600 hover:bg-red-700 text-white px-6 md:px-8 py-3 rounded font-medium transition"
-          >
+          <h2 className="text-2xl md:text-3xl font-medium mb-3" style={{ color: 'var(--jf-text-primary)' }}>Welcome to MediaPiayer</h2>
+          <p style={{ color: 'var(--jf-text-muted)' }} className="mb-6">Your library is empty. Upload some media to get started.</p>
+          <Link to="/upload" className="jf-btn-primary inline-block">
             Upload Media
           </Link>
         </div>
@@ -55,42 +95,40 @@ export default function BrowsePage() {
   return (
     <div>
       {featured && (
-        <div className="relative h-[50vh] md:h-[70vh] min-h-[300px] md:min-h-[400px] flex items-end pb-12 md:pb-20 px-4 md:px-8">
-          {featured.backdrop_path ? (
-            <img src={featured.backdrop_path} alt="" className="absolute inset-0 w-full h-full object-cover" />
-          ) : (
-            <div className="absolute inset-0 bg-gradient-to-b from-neutral-900 to-[#141414]" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-[#141414]/60 to-transparent" />
-
-          <div className="relative z-10 max-w-lg">
-            <h1 className="text-3xl md:text-5xl font-bold mb-3 md:mb-4 drop-shadow-lg">{featured.title}</h1>
-            {featured.description && (
-              <p className="text-gray-200 text-sm md:text-lg mb-3 md:mb-4 line-clamp-3">{featured.description}</p>
-            )}
-            <div className="flex gap-3">
-              <Link
-                to={featured.type === 'movie' ? `/watch/${featured.id}` : `/series/${featured.id}`}
-                className="bg-red-600 hover:bg-red-700 text-white px-5 md:px-8 py-2 md:py-2.5 rounded font-medium flex items-center gap-2 transition text-sm md:text-base"
-              >
-                <span>&#9654;</span> Play
-              </Link>
-              <Link
-                to={featured.type === 'movie' ? `/movie/${featured.id}` : `/series/${featured.id}`}
-                className="bg-neutral-600/70 hover:bg-neutral-600 text-white px-5 md:px-8 py-2 md:py-2.5 rounded font-medium flex items-center gap-2 transition text-sm md:text-base"
-              >
-                <span>&#9432;</span> More Info
-              </Link>
+        <div className="jf-backdrop" style={featured.backdrop_path ? { backgroundImage: `url(${featured.backdrop_path})` } : { background: 'linear-gradient(to bottom right, #292929, #101010)' }}>
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--jf-bg) 0%, rgba(16,16,16,0.6) 40%, transparent 100%)' }} />
+          <div className="absolute inset-0 flex items-end pb-12 md:pb-20 px-4 md:px-8">
+            <div className="max-w-lg">
+              <h1 className="text-3xl md:text-5xl font-bold mb-3 md:mb-4 drop-shadow-lg" style={{ color: 'var(--jf-text-primary)' }}>{featured.title}</h1>
+              {featured.description && (
+                <p className="text-sm md:text-lg mb-3 md:mb-4 line-clamp-3" style={{ color: 'var(--jf-text-secondary)' }}>{featured.description}</p>
+              )}
+              <div className="flex gap-3">
+                <Link
+                  to={featured.type === 'movie' ? `/watch/${featured.id}` : `/series/${featured.id}`}
+                  className="jf-btn-primary flex items-center gap-2"
+                >
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                  Play
+                </Link>
+                <Link
+                  to={featured.type === 'movie' ? `/movie/${featured.id}` : `/series/${featured.id}`}
+                  className="jf-btn-secondary flex items-center gap-2"
+                >
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" /></svg>
+                  More Info
+                </Link>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      <div className="relative z-10 -mt-16 md:-mt-20">
+      <div className={featured ? '-mt-8 md:-mt-16 relative z-10' : 'pt-4'}>
         {continueWatching.length > 0 && (
           <MediaRow title="Continue Watching" items={continueWatching.map(h => ({
             ...h, id: h.media_id, type: h.type, poster_path: h.poster_path, duration: 0, watchProgress: h
-          }))} />
+          }))} variant="backdrop" />
         )}
         {movies.length > 0 && <MediaRow title="Movies" items={movies} />}
         {series.length > 0 && <MediaRow title="Series" items={series} />}

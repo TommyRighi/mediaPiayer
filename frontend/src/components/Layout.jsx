@@ -1,120 +1,91 @@
-import { Link, useNavigate, Outlet } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import { useState } from 'react';
-import OnlineUsers from './OnlineUsers';
+import { Outlet, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import Sidebar from './Sidebar';
 
 export default function Layout() {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-black/80 to-transparent px-4 md:px-8 py-3 flex items-center gap-4 md:gap-8">
-        <Link to="/" className="text-red-600 font-bold text-xl md:text-2xl tracking-tighter">MediaPiayer</Link>
+    <div className="min-h-screen bg-[#101010]">
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        mobileOpen={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+      />
 
-        <div className="hidden md:flex items-center gap-6 text-sm text-gray-300">
-          <Link to="/" className="hover:text-white transition">Home</Link>
-          {isAdmin && <Link to="/upload" className="hover:text-white transition">Upload</Link>}
-          {isAdmin && <Link to="/admin" className="hover:text-white transition">Admin</Link>}
-        </div>
+      <header className={`jf-topbar ${sidebarCollapsed ? 'jf-topbar-collapsed' : ''}`}>
+        <button
+          onClick={() => {
+            if (window.innerWidth < 768) {
+              setMobileOpen(!mobileOpen);
+            } else {
+              setSidebarCollapsed(!sidebarCollapsed);
+            }
+          }}
+          className="p-2 rounded hover:bg-white/10 transition"
+          aria-label="Toggle sidebar"
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="rgba(255,255,255,0.7)"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" /></svg>
+        </button>
 
-        <div className="ml-auto flex items-center gap-3">
-          <OnlineUsers />
-          <div className="relative">
+        <div className="flex-1" />
+
+        <OnlineIndicator />
+
+        <div className="relative ml-3">
           <button
-            onClick={() => setShowDropdown(!showDropdown)}
-            className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition"
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            className="flex items-center gap-2"
           >
-            <div className="w-7 h-7 rounded bg-red-600 flex items-center justify-center text-white text-xs font-bold">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: 'var(--jf-primary)', color: 'var(--jf-bg)' }}>
               {user?.display_name?.charAt(0).toUpperCase()}
             </div>
-            <span className="hidden sm:inline">{user?.display_name}</span>
           </button>
 
-          {showDropdown && (
+          {showUserMenu && (
             <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowDropdown(false)} />
-              <div className="absolute right-0 top-10 w-48 bg-neutral-900 border border-neutral-700 rounded-lg shadow-lg py-1 z-50">
-                <Link
-                  to="/"
-                  className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-neutral-800 hover:text-white md:hidden"
-                  onClick={() => setShowDropdown(false)}
-                >
-                  Home
-                </Link>
-                {isAdmin && (
-                  <Link
-                    to="/upload"
-                    className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-neutral-800 hover:text-white md:hidden"
-                    onClick={() => setShowDropdown(false)}
-                  >
-                    Upload
-                  </Link>
-                )}
-                {isAdmin && (
-                  <Link
-                    to="/admin"
-                    className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-neutral-800 hover:text-white md:hidden"
-                    onClick={() => setShowDropdown(false)}
-                  >
-                    Admin
-                  </Link>
-                )}
-                <div className="border-t border-neutral-700 md:hidden" />
-                <Link
-                  to="/profile"
-                  className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-neutral-800 hover:text-white"
-                  onClick={() => setShowDropdown(false)}
+              <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
+              <div className="absolute right-0 top-10 w-48 rounded-lg shadow-lg py-1 z-50" style={{ background: 'var(--jf-surface)', border: '1px solid var(--jf-divider)' }}>
+                <div className="px-4 py-2.5 text-sm" style={{ color: 'var(--jf-text-secondary)' }}>
+                  {user?.display_name}
+                </div>
+                <div style={{ borderTop: '1px solid var(--jf-divider)' }} />
+                <button
+                  onClick={() => { setShowUserMenu(false); navigate('/profile'); }}
+                  className="block w-full text-left px-4 py-2.5 text-sm hover:bg-white/10"
+                  style={{ color: 'var(--jf-text-primary)' }}
                 >
                   Profile
-                </Link>
+                </button>
                 <button
                   onClick={() => { logout(); navigate('/login'); }}
-                  className="block w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-neutral-800 hover:text-white"
+                  className="block w-full text-left px-4 py-2.5 text-sm hover:bg-white/10"
+                  style={{ color: 'var(--jf-text-primary)' }}
                 >
                   Sign out
                 </button>
               </div>
             </>
           )}
-          </div>
         </div>
+      </header>
 
-        <button
-          onClick={() => setMenuOpen(!menuOpen)}
-          className="md:hidden text-gray-300 hover:text-white p-1"
-          aria-label="Menu"
-        >
-          {menuOpen ? (
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>
-          ) : (
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" /></svg>
-          )}
-        </button>
-      </nav>
-
-      {menuOpen && (
-        <div className="fixed inset-0 top-12 z-40 bg-black/95 pt-4 px-6 md:hidden" onClick={() => setMenuOpen(false)}>
-          <div className="flex flex-col gap-4 text-lg" onClick={(e) => e.stopPropagation()}>
-            <Link to="/" className="text-gray-200 hover:text-white py-2 border-b border-neutral-800" onClick={() => setMenuOpen(false)}>Home</Link>
-            {isAdmin && <Link to="/upload" className="text-gray-200 hover:text-white py-2 border-b border-neutral-800" onClick={() => setMenuOpen(false)}>Upload</Link>}
-            {isAdmin && <Link to="/admin" className="text-gray-200 hover:text-white py-2 border-b border-neutral-800" onClick={() => setMenuOpen(false)}>Admin</Link>}
-            <Link to="/profile" className="text-gray-200 hover:text-white py-2 border-b border-neutral-800" onClick={() => setMenuOpen(false)}>Profile</Link>
-            <button
-              onClick={() => { logout(); navigate('/login'); }}
-              className="text-gray-200 hover:text-white py-2 text-left"
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
-      )}
-
-      <main className="flex-1">
+      <main className={`jf-main ${sidebarCollapsed ? 'jf-main-collapsed' : ''}`}>
         <Outlet />
       </main>
+    </div>
+  );
+}
+
+function OnlineIndicator() {
+  return (
+    <div className="hidden md:flex items-center gap-1.5 text-xs" style={{ color: 'var(--jf-text-muted)' }}>
+      <div className="w-2 h-2 rounded-full" style={{ background: 'var(--jf-primary)' }} />
     </div>
   );
 }
