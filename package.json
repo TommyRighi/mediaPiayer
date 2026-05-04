@@ -7,7 +7,8 @@
     "dev": "node --watch --env-file=.env server/server.js",
     "dev:all": "concurrently -n server,client -c cyan,magenta \"npm run dev\" \"cd frontend && npm run dev\"",
     "start": "node --env-file=.env server/server.js",
-    "build": "cd frontend && npm run build"
+    "build": "cd frontend && npm run build",
+    "deploy": "npm install && cd frontend && npm install && npm run build && cd .. && npm start"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
