@@ -45,8 +45,7 @@ async function start() {
   });
 
   fastify.setNotFoundHandler((request, reply) => {
-    const ext = path.extname(request.url);
-    if (!ext || ['.js', '.css', '.png', '.jpg', '.svg', '.ico'].includes(ext)) {
+    if (path.extname(request.url)) {
       return reply.status(404).send({ error: 'Not found' });
     }
     return reply.sendFile('index.html');

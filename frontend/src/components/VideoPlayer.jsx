@@ -7,36 +7,23 @@ export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode,
   const videoRef = useRef(null);
   const playerRef = useRef(null);
   const progressTimerRef = useRef(null);
+  const initialTimeAppliedRef = useRef(false);
+  const onNextEpisodeRef = useRef(onNextEpisode);
+  const onProgressRef = useRef(onProgress);
   const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    onNextEpisodeRef.current = onNextEpisode;
+    onProgressRef.current = onProgress;
+  });
 
   const handleProgress = useCallback(() => {
     const v = videoRef.current;
-    if (v && onProgress) onProgress(Math.floor(v.currentTime), false, Math.floor(v.duration || 0));
-  }, [onProgress]);
+    if (v && onProgressRef.current) onProgressRef.current(Math.floor(v.currentTime), false, Math.floor(v.duration || 0));
+  }, []);
 
   useEffect(() => {
-    if (!videoRef.current) return;
-
-    const tracks = subtitles.map((sub) => ({
-      kind: 'subtitles',
-      label: sub.label,
-      srclang: sub.language,
-      src: `/api/subtitles/${sub.id}`,
-      default: false,
-    }));
-
-    const existingTracks = videoRef.current.querySelectorAll('track');
-    existingTracks.forEach((t) => t.remove());
-
-    for (const track of tracks) {
-      const el = document.createElement('track');
-      el.kind = track.kind;
-      el.label = track.label;
-      el.srclang = track.srclang;
-      el.src = track.src;
-      if (track.default) el.default = true;
-      videoRef.current.appendChild(el);
-    }
+    if (!videoRef.current || playerRef.current) return;
 
     const player = new Plyr(videoRef.current, {
       controls: [
@@ -60,38 +47,48 @@ export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode,
 
     player.on('playing', () => setPlaying(true));
     player.on('pause', () => setPlaying(false));
-
-    if (onNextEpisode) {
-      player.on('ended', () => {
-        const v = videoRef.current;
-        if (v && onProgress) onProgress(Math.floor(v.duration || 0), true, Math.floor(v.duration || 0));
-      });
-    } else {
-      player.on('ended', () => {
-        const v = videoRef.current;
-        if (v && onProgress) onProgress(Math.floor(v.duration || 0), true, Math.floor(v.duration || 0));
-        setPlaying(false);
-      });
-    }
+    player.on('ended', () => {
+      const v = videoRef.current;
+      if (v && onProgressRef.current) onProgressRef.current(Math.floor(v.duration || 0), true, Math.floor(v.duration || 0));
+      if (!onNextEpisodeRef.current) setPlaying(false);
+    });
 
     return () => {
       player.destroy();
       playerRef.current = null;
     };
-  }, [subtitles, onNextEpisode, onProgress]);
+  }, []);
 
   useEffect(() => {
     const v = videoRef.current;
-    if (v && initialTime > 0) {
-      const onLoaded = () => {
-        v.currentTime = initialTime;
-        v.removeEventListener('loadedmetadata', onLoaded);
-      };
-      if (v.readyState >= 1) {
-        v.currentTime = initialTime;
-      } else {
-        v.addEventListener('loadedmetadata', onLoaded);
-      }
+    if (!v) return;
+
+    const existingTracks = v.querySelectorAll('track');
+    existingTracks.forEach((t) => t.remove());
+
+    for (const sub of subtitles) {
+      const el = document.createElement('track');
+      el.kind = 'subtitles';
+      el.label = sub.label;
+      el.srclang = sub.language;
+      el.src = `/api/subtitles/${sub.id}`;
+      v.appendChild(el);
+    }
+  }, [subtitles]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || initialTime <= 0 || initialTimeAppliedRef.current) return;
+
+    const seek = () => {
+      v.currentTime = initialTime;
+      initialTimeAppliedRef.current = true;
+    };
+
+    if (v.readyState >= 1) {
+      seek();
+    } else {
+      v.addEventListener('loadedmetadata', seek, { once: true });
     }
   }, [initialTime]);
 
@@ -109,7 +106,6 @@ export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode,
       <video
         ref={videoRef}
         src={src}
-        autoPlay
         playsInline
         crossOrigin="anonymous"
       />
