@@ -34,3 +34,241 @@ body {
 video::-webkit-media-controls {
   display: none !important;
 }
+
+.vp-container {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  background: #000;
+  overflow: hidden;
+  cursor: default;
+}
+
+.vp-container:not(:fullscreen) {
+  max-height: 100vh;
+}
+
+.vp-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.vp-center-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0.9;
+  animation: vp-fade-out 0.4s ease-out forwards;
+  z-index: 20;
+}
+
+@keyframes vp-fade-out {
+  0% { opacity: 0.9; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.3); }
+}
+
+.vp-controls {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 10;
+  transition: opacity 0.3s ease;
+}
+
+.vp-controls-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.vp-controls-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.vp-top-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px 40px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
+}
+
+.vp-title {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vp-seek-bar {
+  position: relative;
+  width: 100%;
+  height: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  z-index: 15;
+}
+
+.vp-seek-bar::before {
+  content: '';
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  height: 4px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.vp-seek-buffered {
+  position: absolute;
+  left: 24px;
+  height: 4px;
+  background: rgba(255,255,255,0.3);
+  border-radius: 2px;
+  pointer-events: none;
+  transition: width 0.2s;
+}
+
+.vp-seek-progress {
+  position: absolute;
+  left: 24px;
+  height: 4px;
+  background: #e50914;
+  border-radius: 2px;
+  pointer-events: none;
+  transition: width 0.05s linear;
+}
+
+.vp-seek-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #e50914;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 2;
+}
+
+.vp-seek-bar:hover .vp-seek-handle {
+  opacity: 1;
+}
+
+.vp-seek-bar:hover::before {
+  height: 6px;
+}
+
+.vp-seek-bar:hover .vp-seek-progress,
+.vp-seek-bar:hover .vp-seek-buffered {
+  height: 6px;
+}
+
+.vp-bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 24px 24px;
+  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
+}
+
+.vp-left-controls,
+.vp-right-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vp-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  color: #fff;
+  outline: none;
+}
+
+.vp-btn:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+.vp-volume-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.vp-volume-slider-wrap {
+  width: 0;
+  overflow: hidden;
+  transition: width 0.2s ease;
+}
+
+.vp-volume-group:hover .vp-volume-slider-wrap {
+  width: 70px;
+}
+
+.vp-volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 70px;
+  height: 4px;
+  background: rgba(255,255,255,0.3);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.vp-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.vp-volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+}
+
+.vp-time {
+  color: rgba(255,255,255,0.8);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  margin-left: 4px;
+}
+
+.vp-next-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vp-next-label {
+  font-size: 12px;
+  white-space: nowrap;
+}
