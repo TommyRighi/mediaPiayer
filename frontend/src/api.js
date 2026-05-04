@@ -28,6 +28,7 @@ export const api = {
     login: (email, password) => request('POST', '/auth/login', { email, password }),
     me: () => request('GET', '/auth/me'),
     updateProfile: (data) => request('PATCH', '/auth/profile', data),
+    online: () => request('GET', '/auth/online'),
   },
   media: {
     list: (params = {}) => {

@@ -11,6 +11,7 @@ export default function PartyRoom() {
   const [party, setParty] = useState(null);
   const [members, setMembers] = useState([]);
   const [synced, setSynced] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
 
   const token = getToken();
   const isMovie = party?.media_type === 'movie';
@@ -84,14 +85,21 @@ export default function PartyRoom() {
 
   return (
     <div className="min-h-screen bg-black">
-      <div className="flex items-center px-4 py-3 bg-black/90 z-10">
-        <button onClick={() => navigate(-1)} className="text-gray-400 hover:text-white mr-4 text-2xl">
+      <div className="flex items-center px-3 md:px-4 py-3 bg-black/90 z-10">
+        <button onClick={() => navigate(-1)} className="text-gray-400 hover:text-white mr-3 md:mr-4 text-xl md:text-2xl">
           &#8592;
         </button>
-        <h2 className="text-white text-lg font-medium">
-          Watching: {party?.media_title || 'Loading...'}
+        <h2 className="text-white text-sm md:text-lg font-medium truncate flex-1">
+          {party?.media_title || 'Loading...'}
         </h2>
-        <div className="ml-auto flex items-center gap-4">
+        <button
+          onClick={() => setShowSidebar(!showSidebar)}
+          className="lg:hidden text-gray-400 hover:text-white ml-2 p-2 rounded"
+          aria-label="Toggle members"
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" /></svg>
+        </button>
+        <div className="hidden md:flex items-center gap-4 ml-4">
           <span className="text-sm text-gray-400">
             {members.length} watching
           </span>
@@ -100,13 +108,13 @@ export default function PartyRoom() {
         </div>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex flex-col lg:flex-row">
         <div className="flex-1 flex items-center justify-center bg-black">
           {videoUrl ? (
             <video
               ref={videoRef}
               src={videoUrl}
-              className="max-w-full max-h-[calc(100vh-60px)]"
+              className="max-w-full max-h-[calc(100vh-52px)] lg:max-h-[calc(100vh-60px)]"
               crossOrigin="anonymous"
               onPlay={handlePlay}
               onPause={handlePause}
@@ -117,8 +125,17 @@ export default function PartyRoom() {
           )}
         </div>
 
-        <div className="w-60 bg-neutral-900 p-4 overflow-y-auto max-h-[calc(100vh-60px)]">
-          <h3 className="text-sm font-medium text-gray-400 uppercase mb-3">Members</h3>
+        <div className={`${showSidebar ? 'block' : 'hidden'} lg:block w-full lg:w-60 bg-neutral-900 p-4 overflow-y-auto lg:max-h-[calc(100vh-60px)] border-t lg:border-t-0 lg:border-l border-neutral-800`}>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-gray-400 uppercase">Members</h3>
+            <button
+              onClick={() => setShowSidebar(false)}
+              className="lg:hidden text-gray-400 hover:text-white p-1"
+              aria-label="Close sidebar"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>
+            </button>
+          </div>
           <div className="flex flex-col gap-2">
             {members.map((m) => (
               <div key={m.id} className="flex items-center gap-2 text-sm">

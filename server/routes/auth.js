@@ -71,6 +71,14 @@ async function authRoutes(fastify) {
     return { user: request.user };
   });
 
+  fastify.get('/api/auth/online', { preHandler: authMiddleware }, async (request) => {
+    const db = getDb();
+    const users = db.prepare(
+      "SELECT id, display_name, avatar_url FROM users WHERE last_active_at IS NOT NULL AND last_active_at > datetime('now', '-2 minutes') AND id != ? ORDER BY display_name"
+    ).all(request.user.id);
+    return { users };
+  });
+
   fastify.patch('/api/auth/profile', { preHandler: authMiddleware }, async (request, reply) => {
     const { displayName, avatarUrl } = request.body || {};
     const db = getDb();

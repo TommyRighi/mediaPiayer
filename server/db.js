@@ -101,6 +101,11 @@ function migrate() {
     db.exec(`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'viewer'`);
     db.exec(`UPDATE users SET role = 'admin' WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)`);
   }
+
+  const activeCol = db.prepare("PRAGMA table_info(users)").all().find(c => c.name === 'last_active_at');
+  if (!activeCol) {
+    db.exec(`ALTER TABLE users ADD COLUMN last_active_at TEXT`);
+  }
 }
 
 function closeDb() {

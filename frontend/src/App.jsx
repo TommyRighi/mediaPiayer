@@ -35,14 +35,14 @@ export default function App() {
             <Route index element={<BrowsePage />} />
             <Route path="movie/:id" element={<MediaDetailPage />} />
             <Route path="series/:id" element={<MediaDetailPage />} />
-            <Route path="watch/:mediaId" element={<WatchPage />} />
-            <Route path="watch/:mediaId/:episodeId" element={<WatchPage />} />
             <Route path="upload" element={<UploadPage />} />
             <Route path="scene/:partyId" element={<PartyRoom />} />
             <Route path="join" element={<JoinPartyPage />} />
             <Route path="admin" element={<AdminPage />} />
             <Route path="profile" element={<ProfilePage />} />
           </Route>
+          <Route path="/watch/:mediaId" element={<ProtectedRoute><WatchPage /></ProtectedRoute>} />
+          <Route path="/watch/:mediaId/:episodeId" element={<ProtectedRoute><WatchPage /></ProtectedRoute>} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

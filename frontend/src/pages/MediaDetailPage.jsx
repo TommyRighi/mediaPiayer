@@ -51,7 +51,7 @@ export default function MediaDetailPage() {
 
   return (
     <div className="min-h-screen">
-      <div className="relative h-[60vh] min-h-[350px]">
+      <div className="relative h-[40vh] md:h-[60vh] min-h-[250px] md:min-h-[350px]">
         {media.backdrop_path ? (
           <img src={media.backdrop_path} alt="" className="w-full h-full object-cover" />
         ) : (
@@ -60,21 +60,21 @@ export default function MediaDetailPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-[#141414] to-transparent" />
       </div>
 
-      <div className="relative z-10 max-w-5xl mx-auto px-8 -mt-32">
-        <div className="flex gap-8">
-          <div className="flex-shrink-0 w-[220px] -mt-16">
+      <div className="relative z-10 max-w-5xl mx-auto px-4 md:px-8 -mt-24 md:-mt-32">
+        <div className="flex flex-col md:flex-row gap-6 md:gap-8">
+          <div className="flex-shrink-0 w-[140px] md:w-[220px] -mt-16 md:-mt-16 mx-auto md:mx-0">
             <div className="aspect-[2/3] bg-neutral-800 rounded-lg overflow-hidden shadow-2xl">
               {media.poster_path ? (
                 <img src={media.poster_path} alt={media.title} className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-neutral-600 text-6xl">
+                <div className="w-full h-full flex items-center justify-center text-neutral-600 text-4xl md:text-6xl">
                   {media.title.charAt(0)}
                 </div>
               )}
             </div>
           </div>
 
-          <div className="pt-8 flex-1">
+          <div className="pt-0 md:pt-8 flex-1 text-center md:text-left">
             {editing ? (
               <div className="flex flex-col gap-3">
                 <input
@@ -103,24 +103,24 @@ export default function MediaDetailPage() {
               </div>
             ) : (
               <>
-                <h1 className="text-4xl font-bold mb-2">{media.title}</h1>
-                <div className="flex items-center gap-3 text-sm text-gray-400 mb-4">
+                <h1 className="text-2xl md:text-4xl font-bold mb-2">{media.title}</h1>
+                <div className="flex items-center justify-center md:justify-start flex-wrap gap-2 md:gap-3 text-sm text-gray-400 mb-4">
                   {media.year && <span>{media.year}</span>}
                   {media.genre && <span>{media.genre}</span>}
                   <span className="uppercase">{media.type}</span>
                 </div>
-                {media.description && <p className="text-gray-300 mb-6 max-w-xl">{media.description}</p>}
+                {media.description && <p className="text-gray-300 mb-6 max-w-xl mx-auto md:mx-0">{media.description}</p>}
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center md:justify-start flex-wrap gap-3">
                   <Link
                     to={media.type === 'movie' ? `/watch/${media.id}` : media.type === 'series' ? `/series/${media.id}` : '#'}
-                    className="bg-red-600 hover:bg-red-700 text-white px-8 py-2.5 rounded font-medium flex items-center gap-2 transition"
+                    className="bg-red-600 hover:bg-red-700 text-white px-6 md:px-8 py-2.5 rounded font-medium flex items-center gap-2 transition"
                   >
                     <span>&#9654;</span> Play
                   </Link>
                   <button
                     onClick={handleStartParty}
-                    className="bg-neutral-600/70 hover:bg-neutral-600 text-white px-6 py-2.5 rounded font-medium transition"
+                    className="bg-neutral-600/70 hover:bg-neutral-600 text-white px-4 md:px-6 py-2.5 rounded font-medium transition text-sm md:text-base"
                   >
                     Start Watch Party
                   </button>
@@ -162,19 +162,19 @@ export default function MediaDetailPage() {
                     <Link
                       key={ep.id}
                       to={`/watch/${media.id}/${ep.id}`}
-                      className="bg-neutral-800 hover:bg-neutral-700 rounded-lg p-4 flex items-center gap-3 transition group"
+                      className="bg-neutral-800 hover:bg-neutral-700 rounded-lg p-3 md:p-4 flex items-center gap-3 transition group"
                     >
-                      <div className="w-12 h-12 rounded bg-neutral-700 flex items-center justify-center flex-shrink-0 group-hover:bg-red-600 transition">
-                        <span className="text-white text-lg">&#9654;</span>
+                      <div className="w-10 h-10 md:w-12 md:h-12 rounded bg-neutral-700 flex items-center justify-center flex-shrink-0 group-hover:bg-red-600 transition">
+                        <span className="text-white text-base md:text-lg">&#9654;</span>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-white font-medium truncate">
+                        <p className="text-white font-medium truncate text-sm md:text-base">
                           {ep.episode_number}. {ep.title}
                         </p>
                         <p className="text-gray-500 text-xs truncate">{ep.description}</p>
                       </div>
                       {ep.watchProgress && (
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-gray-500 hidden sm:block">
                           {Math.floor(ep.watchProgress.progress_seconds / 60)}m
                         </div>
                       )}

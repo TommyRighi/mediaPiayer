@@ -23,7 +23,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen pt-20 px-8 pb-16 flex items-start justify-center">
+    <div className="min-h-screen pt-20 px-4 md:px-8 pb-16 flex items-start justify-center">
       <div className="w-full max-w-md">
         <h1 className="text-3xl font-bold mb-8">Profile</h1>
 

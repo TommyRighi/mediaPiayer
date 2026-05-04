@@ -13,6 +13,7 @@ const uploadRoutes = require('./routes/upload');
 const watchRoutes = require('./routes/watch');
 const partyRoutes = require('./routes/parties');
 const adminRoutes = require('./routes/admin');
+const { getDb } = require('./db');
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -58,6 +59,16 @@ async function start() {
   await fastify.register(watchRoutes);
   await fastify.register(partyRoutes);
   await fastify.register(adminRoutes);
+
+  fastify.addHook('onResponse', (request, reply, done) => {
+    if (request.user && request.user.id) {
+      try {
+        const db = getDb();
+        db.prepare('UPDATE users SET last_active_at = datetime(\'now\') WHERE id = ?').run(request.user.id);
+      } catch (_) {}
+    }
+    done();
+  });
 
   await fastify.listen({ port: PORT, host: HOST });
   fastify.log.info(`Server running at http://${HOST}:${PORT}`);
