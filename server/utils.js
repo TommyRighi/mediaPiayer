@@ -7,6 +7,10 @@ function isWithinDir(filePath, dir) {
   return resolved.startsWith(resolvedDir + path.sep) || resolved === resolvedDir;
 }
 
+function isWithinAnyDir(filePath, dirs) {
+  return dirs.some(dir => isWithinDir(filePath, dir));
+}
+
 const VIDEO_MIME_TYPES = {
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
@@ -21,7 +25,7 @@ function getVideoMimeType(filePath) {
 }
 
 async function streamVideo(request, reply, filePath) {
-  if (!isWithinDir(filePath, MEDIA_DIR)) {
+  if (!isWithinAnyDir(filePath, MEDIA_DIRS)) {
     return reply.status(403).send({ error: 'Invalid file path' });
   }
   if (!fs.existsSync(filePath)) {
@@ -146,8 +150,12 @@ function detectSubtitleLang(filename) {
 
 const MEDIA_DIR = path.join(__dirname, '..', 'media');
 
+const MEDIA_DIRS = process.env.MEDIA_DIRS
+  ? process.env.MEDIA_DIRS.split(',').map(p => path.resolve(p.trim()))
+  : [MEDIA_DIR];
+
 module.exports = {
-  isWithinDir, getVideoMimeType, streamVideo, MEDIA_DIR,
+  isWithinDir, isWithinAnyDir, getVideoMimeType, streamVideo, MEDIA_DIR, MEDIA_DIRS,
   SUBTITLE_EXTENSIONS, IMAGE_EXTENSIONS,
   getSubtitleMimeType, getImageMimeType, srtToVtt,
   detectSubtitleLang, LANG_MAP,

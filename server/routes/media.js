@@ -1,6 +1,6 @@
 const { getDb } = require('../db');
 const { authMiddleware, optionalAuth, adminMiddleware } = require('../auth');
-const { isWithinDir, streamVideo, MEDIA_DIR, getImageMimeType, getSubtitleMimeType, srtToVtt } = require('../utils');
+const { isWithinDir, isWithinAnyDir, streamVideo, MEDIA_DIR, MEDIA_DIRS, getImageMimeType, getSubtitleMimeType, srtToVtt } = require('../utils');
 const path = require('path');
 const fs = require('fs');
 
@@ -58,7 +58,7 @@ async function mediaRoutes(fastify) {
     }
 
     const filePath = media.poster_path;
-    if (!isWithinDir(filePath, MEDIA_DIR)) {
+    if (!isWithinAnyDir(filePath, MEDIA_DIRS)) {
       return reply.status(403).send({ error: 'Invalid file path' });
     }
     if (!fs.existsSync(filePath)) {
@@ -80,7 +80,7 @@ async function mediaRoutes(fastify) {
     }
 
     const filePath = media.backdrop_path;
-    if (!isWithinDir(filePath, MEDIA_DIR)) {
+    if (!isWithinAnyDir(filePath, MEDIA_DIRS)) {
       return reply.status(403).send({ error: 'Invalid file path' });
     }
     if (!fs.existsSync(filePath)) {
@@ -196,7 +196,7 @@ async function mediaRoutes(fastify) {
     }
 
     const filePath = sub.file_path;
-    if (!isWithinDir(filePath, MEDIA_DIR)) {
+    if (!isWithinAnyDir(filePath, MEDIA_DIRS)) {
       return reply.status(403).send({ error: 'Invalid file path' });
     }
     if (!fs.existsSync(filePath)) {
@@ -263,18 +263,18 @@ async function mediaRoutes(fastify) {
     if (media.type === 'series') {
       const episodes = db.prepare('SELECT file_path FROM episodes WHERE series_id = ?').all(media.id);
       for (const ep of episodes) {
-        if (ep.file_path && isWithinDir(ep.file_path, MEDIA_DIR) && fs.existsSync(ep.file_path)) {
+        if (ep.file_path && isWithinAnyDir(ep.file_path, MEDIA_DIRS) && fs.existsSync(ep.file_path)) {
           fs.unlinkSync(ep.file_path);
         }
       }
-    } else if (media.file_path && isWithinDir(media.file_path, MEDIA_DIR) && fs.existsSync(media.file_path)) {
+    } else if (media.file_path && isWithinAnyDir(media.file_path, MEDIA_DIRS) && fs.existsSync(media.file_path)) {
       fs.unlinkSync(media.file_path);
     }
 
-    if (media.poster_path && isWithinDir(media.poster_path, MEDIA_DIR) && fs.existsSync(media.poster_path)) {
+    if (media.poster_path && isWithinAnyDir(media.poster_path, MEDIA_DIRS) && fs.existsSync(media.poster_path)) {
       fs.unlinkSync(media.poster_path);
     }
-    if (media.backdrop_path && isWithinDir(media.backdrop_path, MEDIA_DIR) && fs.existsSync(media.backdrop_path)) {
+    if (media.backdrop_path && isWithinAnyDir(media.backdrop_path, MEDIA_DIRS) && fs.existsSync(media.backdrop_path)) {
       fs.unlinkSync(media.backdrop_path);
     }
 

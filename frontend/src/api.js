@@ -60,6 +60,8 @@ export const api = {
   },
   admin: {
     scan: () => request('POST', '/admin/scan'),
+    getStorage: () => request('GET', '/admin/storage'),
+    setStorage: (dirs) => request('POST', '/admin/storage', { dirs }),
   },
 };
 

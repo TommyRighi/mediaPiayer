@@ -74,6 +74,15 @@ export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode,
       el.src = `/api/subtitles/${sub.id}`;
       v.appendChild(el);
     }
+
+    const container = containerRef.current;
+    if (container) {
+      if (subtitles.length === 0) {
+        container.classList.add('vp-no-subs');
+      } else {
+        container.classList.remove('vp-no-subs');
+      }
+    }
   }, [subtitles]);
 
   useEffect(() => {

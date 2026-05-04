@@ -1,10 +1,11 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const Fastify = require('fastify');
 const cors = require('@fastify/cors');
 const multipart = require('@fastify/multipart');
 const statik = require('@fastify/static');
 const websocket = require('@fastify/websocket');
 const rateLimit = require('@fastify/rate-limit');
-const path = require('path');
 
 const authRoutes = require('./routes/auth');
 const mediaRoutes = require('./routes/media');
@@ -13,6 +14,7 @@ const uploadRoutes = require('./routes/upload');
 const watchRoutes = require('./routes/watch');
 const partyRoutes = require('./routes/parties');
 const adminRoutes = require('./routes/admin');
+const { MEDIA_DIRS } = require('./utils');
 const { getDb } = require('./db');
 
 const PORT = process.env.PORT || 3000;
@@ -71,6 +73,7 @@ async function start() {
 
   await fastify.listen({ port: PORT, host: HOST });
   fastify.log.info(`Server running at http://${HOST}:${PORT}`);
+  fastify.log.info(`Media directories: ${MEDIA_DIRS.join(', ')}`);
 }
 
 start().catch((err) => {
