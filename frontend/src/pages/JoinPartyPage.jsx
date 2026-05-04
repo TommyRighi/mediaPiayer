@@ -29,7 +29,7 @@ export default function JoinPartyPage() {
         <h1 className="text-3xl font-bold mb-8">Join Watch Party</h1>
 
         {error && (
-          <div className="bg-red-600/20 border border-red-600 text-red-400 rounded px-4 py-3 mb-6 text-sm">
+          <div className="rounded px-4 py-3 mb-6 text-sm" style={{ background: 'rgba(229,9,20,0.12)', border: '1px solid var(--jf-primary)', color: '#ff6b6b' }}>
             {error}
           </div>
         )}
@@ -47,7 +47,7 @@ export default function JoinPartyPage() {
             />
           </div>
           <button type="submit" disabled={loading}
-            className="bg-red-600 hover:bg-red-700 text-white font-medium rounded py-3 transition disabled:opacity-50">
+            className="jf-btn-primary w-full">
             {loading ? 'Joining...' : 'Join'}
           </button>
         </form>

@@ -40,13 +40,17 @@ export const api = {
     delete: (id) => request('DELETE', `/media/${id}`),
     videoUrl: (id) => `${BASE}/media/${id}/video`,
     episodeVideoUrl: (id) => `${BASE}/episodes/${id}/video`,
+    posterUrl: (id) => `${BASE}/media/${id}/poster`,
+    backdropUrl: (id) => `${BASE}/media/${id}/backdrop`,
+    subtitles: (id) => request('GET', `/media/${id}/subtitles`),
+    episodeSubtitles: (id) => request('GET', `/episodes/${id}/subtitles`),
   },
   series: {
     episodes: (id) => request('GET', `/series/${id}/episodes`),
   },
   watch: {
-    progress: (mediaId, episodeId, seconds, completed) =>
-      request('POST', '/watch/progress', { mediaId, episodeId, seconds, completed }),
+    progress: (mediaId, episodeId, seconds, completed, duration) =>
+      request('POST', '/watch/progress', { mediaId, episodeId, seconds, completed, duration }),
     history: () => request('GET', '/watch/history'),
   },
   parties: {

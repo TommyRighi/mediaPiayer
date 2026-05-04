@@ -3,8 +3,8 @@ import { useAuth } from '../context/AuthContext';
 
 const navItems = [
   { path: '/', label: 'Home', icon: 'home' },
-  { path: '/movies', label: 'Movies', icon: 'movie' },
-  { path: '/series', label: 'Series', icon: 'series' },
+  { path: '/?type=movie', label: 'Movies', icon: 'movie' },
+  { path: '/?type=series', label: 'Series', icon: 'series' },
 ];
 
 const adminItems = [
@@ -40,7 +40,8 @@ export default function Sidebar({ collapsed, mobileOpen, onClose }) {
   const location = useLocation();
 
   const isActive = (path) => {
-    if (path === '/') return location.pathname === '/';
+    if (path === '/') return location.pathname === '/' && !location.search;
+    if (path.includes('?')) return location.pathname + location.search === path;
     return location.pathname.startsWith(path);
   };
 

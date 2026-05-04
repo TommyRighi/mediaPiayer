@@ -40,13 +40,13 @@ export default function AdminPage() {
           <button
             onClick={handleScan}
             disabled={scanning}
-            className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded font-medium transition disabled:opacity-50"
+            className="jf-btn-primary"
           >
             {scanning ? 'Scanning...' : 'Scan for new media'}
           </button>
 
           {scanResult && !scanResult.error && (
-            <div className="mt-4 text-sm text-green-400">
+            <div className="mt-4 text-sm" style={{ color: 'var(--jf-primary)' }}>
               Found: {scanResult.movies} movies, {scanResult.series} series ({scanResult.episodes} episodes)
             </div>
           )}

@@ -25,6 +25,12 @@ export default function WatchPage() {
     }).catch((err) => { console.error('Failed to load media:', err); });
   }, [mediaId, episodeId]);
 
+  const subtitles = useMemo(() => {
+    if (episodeId && episode?.subtitles) return episode.subtitles;
+    if (!episodeId && media?.subtitles) return media.subtitles;
+    return [];
+  }, [episode, media, episodeId]);
+
   const nextEpisode = useMemo(() => {
     if (!media || !media.seasons || !episodeId) return null;
     const allEpisodes = Object.keys(media.seasons)
@@ -39,8 +45,8 @@ export default function WatchPage() {
     ? `${media?.title} - S${episode.season_number}E${episode.episode_number} ${episode.title}`
     : media?.title || 'Loading...';
 
-  const handleProgress = useCallback((seconds, completed) => {
-    api.watch.progress(mediaId, episodeId || null, seconds, completed).catch(() => {});
+  const handleProgress = useCallback((seconds, completed, duration) => {
+    api.watch.progress(mediaId, episodeId || null, seconds, completed, duration).catch(() => {});
   }, [mediaId, episodeId]);
 
   const initialTime = useMemo(() => {
@@ -52,6 +58,7 @@ export default function WatchPage() {
     <VideoPlayer
       src={videoUrl}
       title={title}
+      subtitles={subtitles}
       onBack={() => navigate(-1)}
       initialTime={initialTime}
       onProgress={handleProgress}

@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, getToken } from '../api';
+import Plyr from 'plyr';
+import 'plyr/css';
 
 export default function PartyRoom() {
   const { partyId } = useParams();
   const navigate = useNavigate();
   const videoRef = useRef(null);
   const wsRef = useRef(null);
+  const playerRef = useRef(null);
 
   const [party, setParty] = useState(null);
   const [members, setMembers] = useState([]);
@@ -25,6 +28,41 @@ export default function PartyRoom() {
       setMembers(data.members);
 }).catch(() => navigate('/'));
   }, [partyId, navigate]);
+
+  useEffect(() => {
+    if (!videoRef.current || !party) return;
+
+    const player = new Plyr(videoRef.current, {
+      controls: [
+        'play-large', 'play', 'progress', 'current-time', 'duration',
+        'mute', 'volume', 'settings', 'captions', 'pip', 'airplay',
+        'fullscreen',
+      ],
+      settings: ['captions', 'speed'],
+      autopause: true,
+      autoplay: false,
+      keyboard: { focused: true, global: true },
+      fullscreen: { iosNative: true },
+    });
+
+    playerRef.current = player;
+
+    if (party.position > 0) {
+      player.once('loadedmetadata', () => {
+        player.currentTime = party.position;
+        if (party.is_playing) {
+          player.play().catch(() => {});
+        }
+      });
+    } else if (party.is_playing) {
+      player.play().catch(() => {});
+    }
+
+    return () => {
+      player.destroy();
+      playerRef.current = null;
+    };
+  }, [videoUrl, party]);
 
   useEffect(() => {
     if (!partyId || !token) return;
@@ -111,15 +149,17 @@ export default function PartyRoom() {
       <div className="flex flex-col lg:flex-row">
         <div className="flex-1 flex items-center justify-center bg-black">
           {videoUrl ? (
-            <video
-              ref={videoRef}
-              src={videoUrl}
-              className="max-w-full max-h-[calc(100vh-52px)] lg:max-h-[calc(100vh-60px)]"
-              crossOrigin="anonymous"
-              onPlay={handlePlay}
-              onPause={handlePause}
-              onSeeked={handleSeek}
-            />
+            <div style={{ width: '100%', maxWidth: '100%' }}>
+              <video
+                ref={videoRef}
+                src={videoUrl}
+                playsInline
+                crossOrigin="anonymous"
+                onPlay={handlePlay}
+                onPause={handlePause}
+                onSeeked={handleSeek}
+              />
+            </div>
           ) : (
             <div className="text-gray-400">Loading...</div>
           )}

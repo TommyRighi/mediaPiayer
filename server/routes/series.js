@@ -1,6 +1,8 @@
 const { getDb } = require('../db');
 const { optionalAuth } = require('../auth');
-const { streamVideo, MEDIA_DIR } = require('../utils');
+const { streamVideo, MEDIA_DIR, isWithinDir, srtToVtt } = require('../utils');
+const path = require('path');
+const fs = require('fs');
 
 async function seriesRoutes(fastify) {
   fastify.get('/api/series/:id/episodes', { preHandler: optionalAuth }, async (request, reply) => {
@@ -48,6 +50,18 @@ async function seriesRoutes(fastify) {
     }
 
     return streamVideo(request, reply, episode.file_path);
+  });
+
+  fastify.get('/api/episodes/:id/subtitles', { preHandler: optionalAuth }, async (request) => {
+    const db = getDb();
+    const episode = db.prepare('SELECT id FROM episodes WHERE id = ?').get(request.params.id);
+    if (!episode) {
+      return reply.status(404).send({ error: 'Episode not found' });
+    }
+    const subtitles = db.prepare(
+      'SELECT id, label, language FROM subtitles WHERE episode_id = ?'
+    ).all(request.params.id);
+    return { subtitles };
   });
 }
 

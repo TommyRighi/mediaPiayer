@@ -7,6 +7,7 @@ const fs = require('fs');
 const MEDIA_DIR = path.join(__dirname, '..', '..', 'media');
 
 const ALLOWED_EXTENSIONS = ['.mp4', '.mkv', '.webm', '.mov', '.avi'];
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
 
 async function uploadRoutes(fastify) {
   fastify.post('/api/upload', { preHandler: [authMiddleware, adminMiddleware], bodyLimit: 100 * 1024 * 1024 }, async (request, reply) => {
@@ -111,6 +112,89 @@ async function uploadRoutes(fastify) {
       cleanup();
       throw err;
     }
+  });
+
+  fastify.post('/api/media/:id/image', { preHandler: [authMiddleware, adminMiddleware], bodyLimit: 20 * 1024 * 1024 }, async (request, reply) => {
+    const db = getDb();
+    const media = db.prepare('SELECT id, poster_path, backdrop_path FROM media WHERE id = ?').get(request.params.id);
+    if (!media) {
+      return reply.status(404).send({ error: 'Media not found' });
+    }
+
+    const data = await request.file();
+    if (!data) {
+      return reply.status(400).send({ error: 'No file uploaded' });
+    }
+
+    const imageType = data.fields.type?.value;
+    if (!['poster', 'backdrop'].includes(imageType)) {
+      return reply.status(400).send({ error: 'type must be poster or backdrop' });
+    }
+
+    const ext = path.extname(data.filename) || '.jpg';
+    if (!IMAGE_EXTENSIONS.includes(ext.toLowerCase())) {
+      return reply.status(400).send({ error: `File type ${ext} not allowed for images. Allowed: ${IMAGE_EXTENSIONS.join(', ')}` });
+    }
+
+    const fileDir = path.join(MEDIA_DIR, 'posters');
+    fs.mkdirSync(fileDir, { recursive: true });
+    const fileName = `${media.id}-${imageType}${ext}`;
+    const filePath = path.join(fileDir, fileName);
+
+    const writeStream = fs.createWriteStream(filePath);
+    await new Promise((resolve, reject) => {
+      writeStream.on('error', reject);
+      data.file.on('end', resolve);
+      data.file.on('error', reject);
+      data.file.pipe(writeStream);
+    });
+
+    const column = imageType === 'poster' ? 'poster_path' : 'backdrop_path';
+    db.prepare(`UPDATE media SET ${column} = ? WHERE id = ?`).run(filePath, media.id);
+
+    return { media: db.prepare('SELECT * FROM media WHERE id = ?').get(media.id) };
+  });
+
+  fastify.post('/api/media/:id/subtitles/upload', { preHandler: [authMiddleware, adminMiddleware], bodyLimit: 5 * 1024 * 1024 }, async (request, reply) => {
+    const db = getDb();
+    const media = db.prepare('SELECT id, type FROM media WHERE id = ?').get(request.params.id);
+    if (!media) {
+      return reply.status(404).send({ error: 'Media not found' });
+    }
+
+    const data = await request.file();
+    if (!data) {
+      return reply.status(400).send({ error: 'No file uploaded' });
+    }
+
+    const language = data.fields.language?.value || 'en';
+    const label = data.fields.label?.value || language;
+    const episodeId = data.fields.episodeId?.value || null;
+
+    const ext = path.extname(data.filename) || '.srt';
+    if (!['.srt', '.vtt'].includes(ext.toLowerCase())) {
+      return reply.status(400).send({ error: 'File type not allowed for subtitles. Allowed: .srt, .vtt' });
+    }
+
+    const fileDir = path.join(MEDIA_DIR, 'subtitles');
+    fs.mkdirSync(fileDir, { recursive: true });
+    const subId = nanoid();
+    const fileName = `${subId}${ext}`;
+    const filePath = path.join(fileDir, fileName);
+
+    const writeStream = fs.createWriteStream(filePath);
+    await new Promise((resolve, reject) => {
+      writeStream.on('error', reject);
+      data.file.on('end', resolve);
+      data.file.on('error', reject);
+      data.file.pipe(writeStream);
+    });
+
+    db.prepare(
+      'INSERT INTO subtitles (id, media_id, episode_id, label, language, file_path) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(subId, media.id, episodeId, label, language, filePath);
+
+    return { subtitle: { id: subId, label, language } };
   });
 }
 

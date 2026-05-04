@@ -18,6 +18,14 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+function AdminRoute({ children }) {
+  const { user, loading, isAdmin } = useAuth();
+  if (loading) return <div className="flex items-center justify-center min-h-screen text-gray-400">Loading...</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!isAdmin) return <Navigate to="/" replace />;
+  return children;
+}
+
 function PublicRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex items-center justify-center min-h-screen text-gray-400">Loading...</div>;
@@ -35,10 +43,10 @@ export default function App() {
             <Route index element={<BrowsePage />} />
             <Route path="movie/:id" element={<MediaDetailPage />} />
             <Route path="series/:id" element={<MediaDetailPage />} />
-            <Route path="upload" element={<UploadPage />} />
+            <Route path="upload" element={<AdminRoute><UploadPage /></AdminRoute>} />
             <Route path="scene/:partyId" element={<PartyRoom />} />
             <Route path="join" element={<JoinPartyPage />} />
-            <Route path="admin" element={<AdminPage />} />
+            <Route path="admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
             <Route path="profile" element={<ProfilePage />} />
           </Route>
           <Route path="/watch/:mediaId" element={<ProtectedRoute><WatchPage /></ProtectedRoute>} />

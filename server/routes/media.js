@@ -1,6 +1,6 @@
 const { getDb } = require('../db');
 const { authMiddleware, optionalAuth, adminMiddleware } = require('../auth');
-const { isWithinDir, streamVideo, MEDIA_DIR } = require('../utils');
+const { isWithinDir, streamVideo, MEDIA_DIR, getImageMimeType, getSubtitleMimeType, srtToVtt } = require('../utils');
 const path = require('path');
 const fs = require('fs');
 
@@ -65,10 +65,30 @@ async function mediaRoutes(fastify) {
       return reply.status(404).send({ error: 'Poster file not found on disk' });
     }
 
-    const ext = path.extname(filePath).toLowerCase();
-    const mimeTypes = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' };
     reply.headers({
-      'Content-Type': mimeTypes[ext] || 'application/octet-stream',
+      'Content-Type': getImageMimeType(filePath),
+      'Cache-Control': 'public, max-age=86400',
+    });
+    return fs.createReadStream(filePath);
+  });
+
+  fastify.get('/api/media/:id/backdrop', { preHandler: optionalAuth }, async (request, reply) => {
+    const db = getDb();
+    const media = db.prepare('SELECT backdrop_path FROM media WHERE id = ?').get(request.params.id);
+    if (!media || !media.backdrop_path) {
+      return reply.status(404).send({ error: 'Backdrop not found' });
+    }
+
+    const filePath = media.backdrop_path;
+    if (!isWithinDir(filePath, MEDIA_DIR)) {
+      return reply.status(403).send({ error: 'Invalid file path' });
+    }
+    if (!fs.existsSync(filePath)) {
+      return reply.status(404).send({ error: 'Backdrop file not found on disk' });
+    }
+
+    reply.headers({
+      'Content-Type': getImageMimeType(filePath),
       'Cache-Control': 'public, max-age=86400',
     });
     return fs.createReadStream(filePath);
@@ -119,6 +139,30 @@ async function mediaRoutes(fastify) {
       media.watchProgress = progress || null;
     }
 
+    if (media.type === 'movie') {
+      media.subtitles = db.prepare(
+        'SELECT id, label, language FROM subtitles WHERE media_id = ? AND episode_id IS NULL'
+      ).all(media.id);
+    } else {
+      const allEpIds = Object.values(media.seasons || {}).flatMap(s => s.map(e => e.id));
+      if (allEpIds.length > 0) {
+        const epSubs = db.prepare(
+          `SELECT id, episode_id, label, language FROM subtitles WHERE episode_id IN (${allEpIds.map(() => '?').join(',')})`
+        ).all(...allEpIds);
+        const subMap = {};
+        for (const s of epSubs) {
+          if (!subMap[s.episode_id]) subMap[s.episode_id] = [];
+          subMap[s.episode_id].push({ id: s.id, label: s.label, language: s.language });
+        }
+        for (const season of Object.values(media.seasons)) {
+          for (const ep of season) {
+            ep.subtitles = subMap[ep.id] || [];
+          }
+        }
+      }
+      media.subtitles = [];
+    }
+
     return { media };
   });
 
@@ -130,6 +174,51 @@ async function mediaRoutes(fastify) {
     }
 
     return streamVideo(request, reply, media.file_path);
+  });
+
+  fastify.get('/api/media/:id/subtitles', { preHandler: optionalAuth }, async (request) => {
+    const db = getDb();
+    const media = db.prepare('SELECT id FROM media WHERE id = ?').get(request.params.id);
+    if (!media) {
+      return reply.status(404).send({ error: 'Media not found' });
+    }
+    const subtitles = db.prepare(
+      'SELECT id, label, language FROM subtitles WHERE media_id = ? AND episode_id IS NULL'
+    ).all(request.params.id);
+    return { subtitles };
+  });
+
+  fastify.get('/api/subtitles/:id', { preHandler: optionalAuth }, async (request, reply) => {
+    const db = getDb();
+    const sub = db.prepare('SELECT * FROM subtitles WHERE id = ?').get(request.params.id);
+    if (!sub) {
+      return reply.status(404).send({ error: 'Subtitle not found' });
+    }
+
+    const filePath = sub.file_path;
+    if (!isWithinDir(filePath, MEDIA_DIR)) {
+      return reply.status(403).send({ error: 'Invalid file path' });
+    }
+    if (!fs.existsSync(filePath)) {
+      return reply.status(404).send({ error: 'Subtitle file not found on disk' });
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    const content = fs.readFileSync(filePath, 'utf-8');
+
+    if (ext === '.srt') {
+      reply.headers({
+        'Content-Type': 'text/vtt; charset=utf-8',
+        'Cache-Control': 'public, max-age=86400',
+      });
+      return srtToVtt(content);
+    }
+
+    reply.headers({
+      'Content-Type': 'text/vtt; charset=utf-8',
+      'Cache-Control': 'public, max-age=86400',
+    });
+    return content;
   });
 
   fastify.patch('/api/media/:id', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {

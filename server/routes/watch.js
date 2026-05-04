@@ -4,13 +4,27 @@ const { nanoid } = require('nanoid');
 
 async function watchRoutes(fastify) {
   fastify.post('/api/watch/progress', { preHandler: authMiddleware }, async (request, reply) => {
-    const { mediaId, episodeId, seconds, completed } = request.body || {};
+    const { mediaId, episodeId, seconds, completed, duration } = request.body || {};
 
     if (!mediaId) {
       return reply.status(400).send({ error: 'mediaId is required' });
     }
 
     const db = getDb();
+
+    if (duration && duration > 0) {
+      if (episodeId) {
+        const ep = db.prepare('SELECT duration FROM episodes WHERE id = ?').get(episodeId);
+        if (ep && (!ep.duration || ep.duration === 0)) {
+          db.prepare('UPDATE episodes SET duration = ? WHERE id = ?').run(Math.floor(duration), episodeId);
+        }
+      } else {
+        const media = db.prepare('SELECT duration FROM media WHERE id = ?').get(mediaId);
+        if (media && (!media.duration || media.duration === 0)) {
+          db.prepare('UPDATE media SET duration = ? WHERE id = ?').run(Math.floor(duration), mediaId);
+        }
+      }
+    }
 
     const existing = db.prepare(
       'SELECT id FROM watch_progress WHERE user_id = ? AND media_id = ? AND (episode_id = ? OR (? IS NULL AND episode_id IS NULL))'

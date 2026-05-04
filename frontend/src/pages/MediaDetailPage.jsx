@@ -10,6 +10,8 @@ export default function MediaDetailPage() {
   const [media, setMedia] = useState(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingSub, setUploadingSub] = useState(null);
 
   useEffect(() => {
     api.media.get(id).then((data) => {
@@ -45,13 +47,62 @@ export default function MediaDetailPage() {
     }
   }
 
+  async function handleImageUpload(e, imageType) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('type', imageType);
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/media/${id}/image`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setMedia(data.media);
+    } catch (err) {
+      alert(err.message);
+    }
+    setUploadingImage(false);
+  }
+
+  async function handleSubtitleUpload(e, episodeId) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingSub(episodeId || 'movie');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('language', file.name.match(/\.([a-z]{2,3})\./)?.[1] || 'en');
+      formData.append('label', file.name.match(/\.([a-z]{2,3})\./)?.[1]?.toUpperCase() || 'English');
+      if (episodeId) formData.append('episodeId', episodeId);
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/media/${id}/subtitles/upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const refreshed = await api.media.get(id);
+      setMedia(refreshed.media);
+    } catch (err) {
+      alert(err.message);
+    }
+    setUploadingSub(null);
+  }
+
   if (!media) {
     return <div className="flex items-center justify-center min-h-[60vh]" style={{ color: 'var(--jf-text-muted)' }}>Loading...</div>;
   }
 
   return (
     <div style={{ marginTop: 'calc(var(--jf-topbar-height) * -1)' }}>
-      <div className="jf-backdrop" style={media.backdrop_path ? { backgroundImage: `url(${media.backdrop_path})` } : { background: 'linear-gradient(to bottom right, #292929, #101010)' }}>
+      <div className="jf-backdrop" style={media.backdrop_path ? { backgroundImage: `url(${api.media.backdropUrl(media.id)})` } : { background: 'linear-gradient(to bottom right, #292929, #101010)' }}>
         <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--jf-bg) 0%, transparent 60%)' }} />
       </div>
 
@@ -61,7 +112,7 @@ export default function MediaDetailPage() {
             <div className="jf-detail-poster mx-auto md:mx-0">
               <div style={{ background: 'var(--jf-surface)' }}>
                 {media.poster_path ? (
-                  <img src={media.poster_path} alt={media.title} className="w-full h-full object-cover" />
+                  <img src={api.media.posterUrl(media.id)} alt={media.title} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-4xl md:text-6xl" style={{ color: 'var(--jf-text-muted)' }}>
                     {media.title.charAt(0)}
@@ -83,6 +134,23 @@ export default function MediaDetailPage() {
                     <button onClick={handleSave} className="jf-btn-primary">Save</button>
                     <button onClick={() => setEditing(false)} className="jf-btn-secondary">Cancel</button>
                   </div>
+                  <div className="flex flex-wrap gap-3 mt-2">
+                    <label className="jf-btn-outline cursor-pointer flex items-center gap-2" style={{ fontSize: '13px' }}>
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" /></svg>
+                      {uploadingImage ? 'Uploading...' : 'Upload Poster'}
+                      <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'poster')} className="hidden" />
+                    </label>
+                    <label className="jf-btn-outline cursor-pointer flex items-center gap-2" style={{ fontSize: '13px' }}>
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" /></svg>
+                      {uploadingImage ? 'Uploading...' : 'Upload Backdrop'}
+                      <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'backdrop')} className="hidden" />
+                    </label>
+                    <label className="jf-btn-outline cursor-pointer flex items-center gap-2" style={{ fontSize: '13px' }}>
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z" /></svg>
+                      {uploadingSub === 'movie' ? 'Uploading...' : 'Add Subtitle (.srt/.vtt)'}
+                      <input type="file" accept=".srt,.vtt" onChange={(e) => handleSubtitleUpload(e, null)} className="hidden" />
+                    </label>
+                  </div>
                 </div>
               ) : (
                 <>
@@ -91,6 +159,12 @@ export default function MediaDetailPage() {
                     {media.year && <span>{media.year}</span>}
                     {media.genre && <span>{media.genre}</span>}
                     <span className="uppercase text-xs px-2 py-0.5 rounded" style={{ background: 'var(--jf-primary-light)', color: 'var(--jf-primary)' }}>{media.type}</span>
+                    {media.subtitles && media.subtitles.length > 0 && (
+                      <span className="uppercase text-xs px-2 py-0.5 rounded flex items-center gap-1" style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--jf-text-secondary)' }}>
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z" /></svg>
+                        {media.subtitles.map(s => s.label).join(', ')}
+                      </span>
+                    )}
                   </div>
                   {media.description && <p className="mb-6 max-w-xl mx-auto md:mx-0" style={{ color: 'var(--jf-text-secondary)' }}>{media.description}</p>}
 
@@ -155,12 +229,26 @@ export default function MediaDetailPage() {
                           <p className="font-medium truncate text-sm md:text-base" style={{ color: 'var(--jf-text-primary)' }}>
                             {ep.episode_number}. {ep.title}
                           </p>
-                          <p className="text-xs truncate" style={{ color: 'var(--jf-text-muted)' }}>{ep.description}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs truncate" style={{ color: 'var(--jf-text-muted)' }}>{ep.description}</p>
+                            {ep.subtitles && ep.subtitles.length > 0 && (
+                              <span className="text-xs flex-shrink-0 flex items-center gap-0.5" style={{ color: 'var(--jf-text-muted)' }}>
+                                <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z" /></svg>
+                                {ep.subtitles.length}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         {ep.watchProgress && (
                           <div className="text-xs hidden sm:block" style={{ color: 'var(--jf-text-muted)' }}>
                             {Math.floor(ep.watchProgress.progress_seconds / 60)}m
                           </div>
+                        )}
+                        {isAdmin && (
+                          <label className="cursor-pointer p-1 rounded hover:bg-white/10" title="Add subtitle">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="var(--jf-text-muted)"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z" /></svg>
+                            <input type="file" accept=".srt,.vtt" onChange={(e) => handleSubtitleUpload(e, ep.id)} className="hidden" />
+                          </label>
                         )}
                       </Link>
                     ))}

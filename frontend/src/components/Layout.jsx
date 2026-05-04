@@ -11,7 +11,7 @@ export default function Layout() {
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#101010]">
+    <div className="min-h-screen" style={{ background: 'var(--jf-bg)' }}>
       <Sidebar
         collapsed={sidebarCollapsed}
         mobileOpen={mobileOpen}

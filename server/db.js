@@ -94,6 +94,16 @@ function migrate() {
       type       TEXT NOT NULL CHECK(type IN ('poster', 'backdrop', 'logo')),
       file_path  TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS subtitles (
+      id         TEXT PRIMARY KEY,
+      media_id   TEXT REFERENCES media(id) ON DELETE CASCADE,
+      episode_id TEXT REFERENCES episodes(id) ON DELETE CASCADE,
+      label      TEXT NOT NULL,
+      language   TEXT NOT NULL,
+      file_path  TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   const roleCol = db.prepare("PRAGMA table_info(users)").all().find(c => c.name === 'role');
