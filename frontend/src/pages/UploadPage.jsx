@@ -29,7 +29,6 @@ export default function UploadPage() {
     setUploading(true);
 
     const formData = new FormData();
-    formData.append('file', file);
     formData.append('type', type);
     formData.append('title', title);
     if (year) formData.append('year', year);
@@ -44,6 +43,7 @@ export default function UploadPage() {
       formData.append('seasonNumber', seasonNumber);
       formData.append('episodeNumber', episodeNumber);
     }
+    formData.append('file', file);
 
     try {
       const xhr = new XMLHttpRequest();

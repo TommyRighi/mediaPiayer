@@ -33,7 +33,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-[#141414] relative">
       <div className="absolute inset-0 bg-black/60" />
       <div className="absolute top-6 left-8">
-        <h1 className="text-red-600 font-bold text-3xl tracking-tighter">NEXTFLIX</h1>
+        <h1 className="text-red-600 font-bold text-3xl tracking-tighter">MediaPiayer</h1>
       </div>
 
       <div className="relative z-10 bg-black/75 rounded-lg p-16 w-full max-w-md mx-4">

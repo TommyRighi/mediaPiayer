@@ -10,7 +10,7 @@ export default function Layout() {
   return (
     <div className="min-h-screen flex flex-col">
       <nav className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-black/80 to-transparent px-8 py-3 flex items-center gap-8">
-        <Link to="/" className="text-red-600 font-bold text-2xl tracking-tighter">NEXTFLIX</Link>
+        <Link to="/" className="text-red-600 font-bold text-2xl tracking-tighter">MediaPiayer</Link>
 
         <div className="flex items-center gap-6 text-sm text-gray-300">
           <Link to="/" className="hover:text-white transition">Home</Link>
