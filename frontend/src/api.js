@@ -5,12 +5,13 @@ function token() {
 }
 
 async function request(method, path, body) {
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = {};
   const t = token();
   if (t) headers['Authorization'] = `Bearer ${t}`;
 
   const opts = { method, headers };
   if (body && method !== 'GET') {
+    headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
 
