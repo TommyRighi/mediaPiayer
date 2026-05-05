@@ -72,6 +72,7 @@ async function uploadRoutes(fastify) {
       filePath = path.join(fileDir, safeName);
     }
 
+    fs.mkdirSync(fileDir, { recursive: true });
     const writeStream = fs.createWriteStream(filePath);
     const fileSize = await new Promise((resolve, reject) => {
       let size = 0;

@@ -9,6 +9,7 @@ export default function AdminPage() {
   const [storageInfo, setStorageInfo] = useState(null);
   const [newDir, setNewDir] = useState('');
   const [storageMsg, setStorageMsg] = useState(null);
+  const [dragIndex, setDragIndex] = useState(null);
 
   useEffect(() => {
     api.media.list().then((data) => setMedia(data.media)).catch(() => {});
@@ -33,7 +34,7 @@ export default function AdminPage() {
     if (!newDir.trim()) return;
     setStorageMsg(null);
     try {
-      const currentDirs = storageInfo?.dirs?.filter(d => d.path !== storageInfo.primary).map(d => d.path) || [];
+      const currentDirs = storageInfo?.dirs?.map(d => d.path) || [];
       const result = await api.admin.setStorage([...currentDirs, newDir.trim()]);
       setStorageMsg({ success: result.note });
       setNewDir('');
@@ -47,8 +48,35 @@ export default function AdminPage() {
   async function handleRemoveStorage(dirPath) {
     setStorageMsg(null);
     try {
-      const remaining = storageInfo.dirs.filter(d => d.path !== dirPath && d.path !== storageInfo.primary).map(d => d.path);
+      const remaining = storageInfo.dirs.filter(d => d.path !== dirPath).map(d => d.path);
       const result = await api.admin.setStorage(remaining);
+      setStorageMsg({ success: result.note });
+      const info = await api.admin.getStorage();
+      setStorageInfo(info);
+    } catch (err) {
+      setStorageMsg({ error: err.message });
+    }
+  }
+
+  function handleDragStart(index) {
+    setDragIndex(index);
+  }
+
+  function handleDragOver(e, index) {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === index) return;
+    const dirs = [...storageInfo.dirs];
+    const [moved] = dirs.splice(dragIndex, 1);
+    dirs.splice(index, 0, moved);
+    setStorageInfo({ ...storageInfo, dirs });
+    setDragIndex(index);
+  }
+
+  async function handleDrop() {
+    setDragIndex(null);
+    const ordered = storageInfo.dirs.map(d => d.path);
+    try {
+      const result = await api.admin.setStorage(ordered);
       setStorageMsg({ success: result.note });
       const info = await api.admin.getStorage();
       setStorageInfo(info);
@@ -73,19 +101,39 @@ export default function AdminPage() {
 
         <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 mb-8">
           <h2 className="text-lg font-medium mb-2">Storage</h2>
-          <p className="text-gray-400 text-sm mb-4">
+          <p className="text-gray-400 text-sm mb-1">
             Add external USB or network paths as media storage. Files in <code className="text-gray-300 bg-neutral-800 px-1 rounded">movies/</code> and <code className="text-gray-300 bg-neutral-800 px-1 rounded">series/ShowName/Season XX/</code> subdirectories will be found by the scanner.
+          </p>
+          <p className="text-gray-500 text-xs mb-4">
+            Drag to reorder — uploads try the first disk with enough space, top to bottom.
           </p>
 
           {storageInfo && (
-            <div className="space-y-3 mb-4">
-              {storageInfo.dirs.map((dir) => (
-                <div key={dir.path} className="bg-neutral-800 rounded p-3 flex items-start justify-between gap-4">
-                  <div className="min-w-0">
+            <div className="space-y-2 mb-4">
+              {storageInfo.dirs.map((dir, idx) => (
+                <div
+                  key={dir.path}
+                  draggable
+                  onDragStart={() => handleDragStart(idx)}
+                  onDragOver={(e) => handleDragOver(e, idx)}
+                  onDrop={handleDrop}
+                  onDragEnd={() => setDragIndex(null)}
+                  className={`bg-neutral-800 rounded p-3 flex items-start gap-3 transition-opacity ${dragIndex === idx ? 'opacity-50' : ''}`}
+                >
+                  <span
+                    className="text-neutral-600 hover:text-neutral-400 cursor-grab active:cursor-grabbing mt-0.5 flex-shrink-0 select-none"
+                    title="Drag to reorder priority"
+                  >
+                    ≡
+                  </span>
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-white font-mono text-sm truncate">{dir.path}</span>
+                      {idx === 0 && (
+                        <span className="text-xs bg-green-600/30 text-green-400 px-2 py-0.5 rounded">Priority 1</span>
+                      )}
                       {dir.path === storageInfo.primary && (
-                        <span className="text-xs bg-blue-600/30 text-blue-400 px-2 py-0.5 rounded">Primary</span>
+                        <span className="text-xs bg-blue-600/30 text-blue-400 px-2 py-0.5 rounded">Built-in</span>
                       )}
                       {!dir.exists && (
                         <span className="text-xs bg-red-600/30 text-red-400 px-2 py-0.5 rounded">Not Found</span>
@@ -98,14 +146,12 @@ export default function AdminPage() {
                       </div>
                     )}
                   </div>
-                  {dir.path !== storageInfo.primary && (
-                    <button
-                      onClick={() => handleRemoveStorage(dir.path)}
-                      className="text-red-400 hover:text-red-300 text-sm flex-shrink-0"
-                    >
-                      Remove
-                    </button>
-                  )}
+                  <button
+                    onClick={() => handleRemoveStorage(dir.path)}
+                    className="text-red-400 hover:text-red-300 text-sm flex-shrink-0"
+                  >
+                    Remove
+                  </button>
                 </div>
               ))}
             </div>

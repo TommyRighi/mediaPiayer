@@ -277,7 +277,7 @@ async function adminRoutes(fastify) {
     }
     const envPath = path.join(__dirname, '..', '..', '.env');
     const primary = path.resolve(MEDIA_DIR);
-    const allDirs = [primary, ...validated.filter(d => d !== primary)];
+    const allDirs = validated.includes(primary) ? validated : [...validated, primary];
     let envContent = '';
     try {
       envContent = fs.readFileSync(envPath, 'utf-8');
