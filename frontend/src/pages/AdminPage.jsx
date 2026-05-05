@@ -65,10 +65,12 @@ export default function AdminPage() {
   function handleDragOver(e, index) {
     e.preventDefault();
     if (dragIndex === null || dragIndex === index) return;
-    const dirs = [...storageInfo.dirs];
-    const [moved] = dirs.splice(dragIndex, 1);
-    dirs.splice(index, 0, moved);
-    setStorageInfo({ ...storageInfo, dirs });
+    setStorageInfo(prev => {
+      const dirs = [...prev.dirs];
+      const [moved] = dirs.splice(dragIndex, 1);
+      dirs.splice(index, 0, moved);
+      return { ...prev, dirs };
+    });
     setDragIndex(index);
   }
 
@@ -192,6 +194,7 @@ export default function AdminPage() {
           {scanResult && !scanResult.error && (
             <div className="mt-4 text-sm" style={{ color: 'var(--jf-primary)' }}>
               Found: {scanResult.movies} movies, {scanResult.series} series ({scanResult.episodes} episodes)
+              {scanResult.converted > 0 && ` · ${scanResult.converted} queued for conversion`}
             </div>
           )}
           {scanResult?.error && (

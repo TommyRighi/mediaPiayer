@@ -188,9 +188,15 @@ const MEDIA_DIRS = process.env.MEDIA_DIRS
   ? process.env.MEDIA_DIRS.split(',').map(p => path.resolve(p.trim()))
   : [MEDIA_DIR];
 
+function setMediaDirs(dirs) {
+  MEDIA_DIRS.length = 0;
+  MEDIA_DIRS.push(...dirs);
+  process.env.MEDIA_DIRS = dirs.join(',');
+}
+
 module.exports = {
   isWithinDir, isWithinAnyDir, getVideoMimeType, streamVideo, MEDIA_DIR, MEDIA_DIRS,
-  getDiskFree, pickBestMediaDir,
+  getDiskFree, pickBestMediaDir, setMediaDirs,
   SUBTITLE_EXTENSIONS, IMAGE_EXTENSIONS,
   getSubtitleMimeType, getImageMimeType, srtToVtt,
   detectSubtitleLang, LANG_MAP,

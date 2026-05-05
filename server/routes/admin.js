@@ -3,7 +3,7 @@ const { authMiddleware, adminMiddleware } = require('../auth');
 const path = require('path');
 const fs = require('fs');
 const { nanoid } = require('nanoid');
-const { SUBTITLE_EXTENSIONS, IMAGE_EXTENSIONS, detectSubtitleLang, MEDIA_DIR, MEDIA_DIRS, isWithinAnyDir } = require('../utils');
+const { SUBTITLE_EXTENSIONS, IMAGE_EXTENSIONS, detectSubtitleLang, MEDIA_DIR, MEDIA_DIRS, isWithinAnyDir, setMediaDirs } = require('../utils');
 const { needsTranscoding, enqueue } = require('../transcode');
 
 function extractTitle(filename) {
@@ -60,7 +60,7 @@ function findSubtitlesForVideo(videoPath) {
 
 async function scanMediaFolder() {
   const db = getDb();
-  const results = { movies: 0, episodes: 0, series: 0, subtitles: 0, posters: 0 };
+  const results = { movies: 0, episodes: 0, series: 0, subtitles: 0, posters: 0, converted: 0 };
 
   for (const baseDir of MEDIA_DIRS) {
     const moviesDir = path.join(baseDir, 'movies');
@@ -88,7 +88,7 @@ async function scanMediaFolder() {
               enqueue('movie', id);
             }
           } else {
-            const media = db.prepare('SELECT poster_path, backdrop_path FROM media WHERE id = ?').get(existing.id);
+            const media = db.prepare('SELECT poster_path, backdrop_path, transcode_status FROM media WHERE id = ?').get(existing.id);
             if (!media.poster_path || !media.backdrop_path) {
               const posterPath = media.poster_path || findPosterForVideo(filePath);
               const backdropPath = media.backdrop_path || findBackdropForVideo(filePath);
@@ -97,6 +97,11 @@ async function scanMediaFolder() {
                   .run(posterPath, backdropPath, existing.id);
                 if (posterPath && !media.poster_path) results.posters++;
               }
+            }
+            if (!media.transcode_status && needsTranscoding(filePath)) {
+              db.prepare('UPDATE media SET transcode_status = ? WHERE id = ?').run('pending', existing.id);
+              enqueue('movie', existing.id);
+              results.converted++;
             }
           }
 
@@ -201,6 +206,12 @@ async function scanMediaFolder() {
                   results.subtitles++;
                 }
               }
+              const ep = db.prepare('SELECT transcode_status FROM episodes WHERE id = ?').get(existing.id);
+              if (!ep.transcode_status && needsTranscoding(epPath)) {
+                db.prepare('UPDATE episodes SET transcode_status = ? WHERE id = ?').run('pending', existing.id);
+                enqueue('episode', existing.id);
+                results.converted++;
+              }
             }
           }
         }
@@ -285,7 +296,8 @@ async function adminRoutes(fastify) {
     const lines = envContent.split('\n').filter(l => !l.startsWith('MEDIA_DIRS='));
     lines.push(`MEDIA_DIRS=${allDirs.join(',')}`);
     fs.writeFileSync(envPath, lines.join('\n') + '\n');
-    return { success: true, dirs: allDirs, note: 'Restart the server for changes to take effect' };
+    setMediaDirs(allDirs);
+    return { success: true, dirs: allDirs };
   });
 }
 
