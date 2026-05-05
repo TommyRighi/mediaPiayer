@@ -148,6 +148,40 @@ function detectSubtitleLang(filename) {
   return { label: 'Unknown', code: 'und' };
 }
 
+function getDiskFree(baseDir) {
+  try {
+    const diskusage = require('diskusage');
+    return diskusage.checkSync(baseDir).available;
+  } catch {
+    try {
+      const { execSync } = require('child_process');
+      const output = execSync(`df -k "${path.resolve(baseDir)}"`, { encoding: 'utf-8' });
+      const lines = output.trim().split('\n');
+      const parts = lines[lines.length - 1].split(/\s+/);
+      return parseInt(parts[3]) * 1024;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function pickBestMediaDir(estimatedSize, subFolder) {
+  const buffer = estimatedSize * 0.1;
+  const needed = estimatedSize + buffer;
+  for (const dir of MEDIA_DIRS) {
+    const free = getDiskFree(dir);
+    if (free === null || free >= needed) {
+      const target = path.join(dir, subFolder);
+      fs.mkdirSync(target, { recursive: true });
+      return dir;
+    }
+  }
+  const fallback = MEDIA_DIRS[0];
+  const target = path.join(fallback, subFolder);
+  fs.mkdirSync(target, { recursive: true });
+  return fallback;
+}
+
 const MEDIA_DIR = path.join(__dirname, '..', 'media');
 
 const MEDIA_DIRS = process.env.MEDIA_DIRS
@@ -156,6 +190,7 @@ const MEDIA_DIRS = process.env.MEDIA_DIRS
 
 module.exports = {
   isWithinDir, isWithinAnyDir, getVideoMimeType, streamVideo, MEDIA_DIR, MEDIA_DIRS,
+  getDiskFree, pickBestMediaDir,
   SUBTITLE_EXTENSIONS, IMAGE_EXTENSIONS,
   getSubtitleMimeType, getImageMimeType, srtToVtt,
   detectSubtitleLang, LANG_MAP,

@@ -100,6 +100,9 @@ export default function MediaDetailPage() {
     return <div className="flex items-center justify-center min-h-[60vh]" style={{ color: 'var(--jf-text-muted)' }}>Loading...</div>;
   }
 
+  const isConverting = media.transcode_status === 'pending' || media.transcode_status === 'converting';
+  const isConvertFailed = media.transcode_status === 'failed';
+
   return (
     <div style={{ marginTop: 'calc(var(--jf-topbar-height) * -1)' }}>
       <div className="jf-backdrop" style={media.backdrop_path ? { backgroundImage: `url(${api.media.backdropUrl(media.id)})` } : { background: 'linear-gradient(to bottom right, #292929, #101010)' }}>
@@ -168,10 +171,22 @@ export default function MediaDetailPage() {
                   </div>
                   {media.description && <p className="mb-6 max-w-xl mx-auto md:mx-0" style={{ color: 'var(--jf-text-secondary)' }}>{media.description}</p>}
 
+                  {isConverting && (
+                    <div className="flex items-center gap-2 px-4 py-2 rounded text-sm font-medium" style={{ background: '#f59e0b', color: '#000' }}>
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="animate-spin"><path d="M12 4V2A10 10 0 0 0 2 12h2a8 8 0 0 1 8-8z" /></svg>
+                      Converting to compatible format...
+                    </div>
+                  )}
+                  {isConvertFailed && (
+                    <div className="flex items-center gap-2 px-4 py-2 rounded text-sm font-medium" style={{ background: 'var(--jf-error)', color: '#fff' }}>
+                      Conversion failed. The original file may still play if your browser supports it.
+                    </div>
+                  )}
                   <div className="flex items-center justify-center md:justify-start flex-wrap gap-3">
                     <Link
-                      to={media.type === 'movie' ? `/watch/${media.id}` : media.type === 'series' ? `/series/${media.id}` : '#'}
-                      className="jf-btn-primary flex items-center gap-2"
+                      to={media.type === 'movie' ? (isConverting ? '#' : `/watch/${media.id}`) : media.type === 'series' ? `/series/${media.id}` : '#'}
+                      className={`jf-btn-primary flex items-center gap-2 ${isConverting ? 'opacity-50 pointer-events-none' : ''}`}
+                      onClick={(e) => { if (isConverting) e.preventDefault(); }}
                     >
                       <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
                       Play
@@ -213,24 +228,35 @@ export default function MediaDetailPage() {
                 <div key={seasonNum} className="mb-8">
                   <h3 className="text-lg font-medium mb-4" style={{ color: 'var(--jf-text-primary)' }}>Season {seasonNum}</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {media.seasons[seasonNum].map((ep) => (
+                    {media.seasons[seasonNum].map((ep) => {
+                      const epConverting = ep.transcode_status === 'pending' || ep.transcode_status === 'converting';
+                      return (
                       <Link
                         key={ep.id}
-                        to={`/watch/${media.id}/${ep.id}`}
-                        className="flex items-center gap-3 p-3 md:p-4 rounded transition group"
+                        to={epConverting ? '#' : `/watch/${media.id}/${ep.id}`}
+                        className={`flex items-center gap-3 p-3 md:p-4 rounded transition group ${epConverting ? 'opacity-50 pointer-events-none' : ''}`}
                         style={{ background: 'var(--jf-surface)' }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--jf-surface-elevated)'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'var(--jf-surface)'}
+                        onMouseEnter={(e) => { if (!epConverting) e.currentTarget.style.background = 'var(--jf-surface-elevated)'; }}
+                        onMouseLeave={(e) => { if (!epConverting) e.currentTarget.style.background = 'var(--jf-surface)'; }}
+                        onClick={(e) => { if (epConverting) e.preventDefault(); }}
                       >
                         <div className="w-10 h-10 md:w-12 md:h-12 rounded flex items-center justify-center flex-shrink-0 transition" style={{ background: 'var(--jf-surface-elevated)' }}>
-                          <span style={{ color: 'var(--jf-text-primary)' }} className="text-base md:text-lg">&#9654;</span>
+                          {epConverting ? (
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="#f59e0b" className="animate-spin"><path d="M12 4V2A10 10 0 0 0 2 12h2a8 8 0 0 1 8-8z" /></svg>
+                          ) : (
+                            <span style={{ color: 'var(--jf-text-primary)' }} className="text-base md:text-lg">&#9654;</span>
+                          )}
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="font-medium truncate text-sm md:text-base" style={{ color: 'var(--jf-text-primary)' }}>
                             {ep.episode_number}. {ep.title}
                           </p>
                           <div className="flex items-center gap-2">
-                            <p className="text-xs truncate" style={{ color: 'var(--jf-text-muted)' }}>{ep.description}</p>
+                            {epConverting ? (
+                              <span className="text-xs" style={{ color: '#f59e0b' }}>Converting...</span>
+                            ) : (
+                              <p className="text-xs truncate" style={{ color: 'var(--jf-text-muted)' }}>{ep.description}</p>
+                            )}
                             {ep.subtitles && ep.subtitles.length > 0 && (
                               <span className="text-xs flex-shrink-0 flex items-center gap-0.5" style={{ color: 'var(--jf-text-muted)' }}>
                                 <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z" /></svg>
@@ -251,7 +277,8 @@ export default function MediaDetailPage() {
                           </label>
                         )}
                       </Link>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}

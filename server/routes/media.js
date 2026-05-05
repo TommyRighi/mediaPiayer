@@ -173,6 +173,10 @@ async function mediaRoutes(fastify) {
       return reply.status(404).send({ error: 'Video not found' });
     }
 
+    if (media.transcode_status === 'pending' || media.transcode_status === 'converting') {
+      return reply.status(503).send({ error: 'Video is being converted to a compatible format. Please try again shortly.' });
+    }
+
     return streamVideo(request, reply, media.file_path);
   });
 

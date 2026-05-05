@@ -63,6 +63,10 @@ export const api = {
     getStorage: () => request('GET', '/admin/storage'),
     setStorage: (dirs) => request('POST', '/admin/storage', { dirs }),
   },
+  transcode: {
+    status: (mediaId, episodeId) =>
+      request('GET', `/transcode/status/${mediaId}${episodeId ? `?episodeId=${episodeId}` : ''}`),
+  },
 };
 
 export function getToken() {

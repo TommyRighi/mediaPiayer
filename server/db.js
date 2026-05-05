@@ -116,6 +116,16 @@ function migrate() {
   if (!activeCol) {
     db.exec(`ALTER TABLE users ADD COLUMN last_active_at TEXT`);
   }
+
+  const transcodeCol = db.prepare("PRAGMA table_info(media)").all().find(c => c.name === 'transcode_status');
+  if (!transcodeCol) {
+    db.exec(`ALTER TABLE media ADD COLUMN transcode_status TEXT`);
+  }
+
+  const epTranscodeCol = db.prepare("PRAGMA table_info(episodes)").all().find(c => c.name === 'transcode_status');
+  if (!epTranscodeCol) {
+    db.exec(`ALTER TABLE episodes ADD COLUMN transcode_status TEXT`);
+  }
 }
 
 function closeDb() {

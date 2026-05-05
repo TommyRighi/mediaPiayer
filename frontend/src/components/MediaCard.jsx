@@ -15,6 +15,8 @@ export default function MediaCard({ media, progress, variant = 'portrait' }) {
   const hasPoster = media.poster_path;
   const hasBackdrop = media.backdrop_path;
 
+  const isConverting = media.transcode_status === 'pending' || media.transcode_status === 'converting';
+
   if (variant === 'backdrop') {
     return (
       <Link to={linkTo} className="flex-shrink-0 group relative overflow-hidden" style={{ width: '72vw', maxWidth: '350px' }}>
@@ -31,6 +33,11 @@ export default function MediaCard({ media, progress, variant = 'portrait' }) {
           {watched && (
             <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--jf-primary)' }}>
               <svg viewBox="0 0 24 24" width="14" height="14" fill="var(--jf-bg)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
+            </div>
+          )}
+          {isConverting && (
+            <div className="absolute top-2 left-2 px-2 py-0.5 rounded text-xs font-medium" style={{ background: '#f59e0b', color: '#000' }}>
+              Converting...
             </div>
           )}
           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.5)', borderRadius: '0.3em' }}>
@@ -62,6 +69,11 @@ export default function MediaCard({ media, progress, variant = 'portrait' }) {
         {watched && (
           <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--jf-primary)' }}>
             <svg viewBox="0 0 24 24" width="12" height="12" fill="var(--jf-bg)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
+          </div>
+        )}
+        {isConverting && (
+          <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: '#f59e0b', color: '#000' }}>
+            Conv...
           </div>
         )}
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.5)', borderRadius: '0.3em' }}>

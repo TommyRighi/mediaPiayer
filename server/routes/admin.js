@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { nanoid } = require('nanoid');
 const { SUBTITLE_EXTENSIONS, IMAGE_EXTENSIONS, detectSubtitleLang, MEDIA_DIR, MEDIA_DIRS, isWithinAnyDir } = require('../utils');
+const { needsTranscoding, enqueue } = require('../transcode');
 
 function extractTitle(filename) {
   let name = path.basename(filename, path.extname(filename));
@@ -80,7 +81,12 @@ async function scanMediaFolder() {
             db.prepare(
               `INSERT INTO media (id, title, type, file_path, file_size, poster_path, backdrop_path) VALUES (?, ?, 'movie', ?, ?, ?, ?)`
             ).run(id, title, filePath, stat.size, posterPath, backdropPath);
-            if (posterPath) results.posters++;
+            if (posterPath) results.posters;
+
+            if (needsTranscoding(filePath)) {
+              db.prepare('UPDATE media SET transcode_status = ? WHERE id = ?').run('pending', id);
+              enqueue('movie', id);
+            }
           } else {
             const media = db.prepare('SELECT poster_path, backdrop_path FROM media WHERE id = ?').get(existing.id);
             if (!media.poster_path || !media.backdrop_path) {
@@ -171,6 +177,11 @@ async function scanMediaFolder() {
                  VALUES (?, ?, ?, ?, ?, ?, ?)`
               ).run(epId, seriesId, seasonNum, epNum, epTitle, epPath, stat.size);
               results.episodes++;
+
+              if (needsTranscoding(epPath)) {
+                db.prepare('UPDATE episodes SET transcode_status = ? WHERE id = ?').run('pending', epId);
+                enqueue('episode', epId);
+              }
 
               const subs = findSubtitlesForVideo(epPath);
               for (const sub of subs) {

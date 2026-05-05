@@ -49,6 +49,10 @@ async function seriesRoutes(fastify) {
       return reply.status(404).send({ error: 'Episode not found' });
     }
 
+    if (episode.transcode_status === 'pending' || episode.transcode_status === 'converting') {
+      return reply.status(503).send({ error: 'Video is being converted to a compatible format. Please try again shortly.' });
+    }
+
     return streamVideo(request, reply, episode.file_path);
   });
 

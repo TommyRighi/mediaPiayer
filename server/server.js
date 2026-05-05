@@ -14,8 +14,10 @@ const uploadRoutes = require('./routes/upload');
 const watchRoutes = require('./routes/watch');
 const partyRoutes = require('./routes/parties');
 const adminRoutes = require('./routes/admin');
+const transcodeRoutes = require('./routes/transcode');
 const { MEDIA_DIRS } = require('./utils');
 const { getDb } = require('./db');
+const { resumePendingJobs } = require('./transcode');
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -60,6 +62,9 @@ async function start() {
   await fastify.register(watchRoutes);
   await fastify.register(partyRoutes);
   await fastify.register(adminRoutes);
+  await fastify.register(transcodeRoutes);
+
+  resumePendingJobs();
 
   fastify.addHook('onResponse', (request, reply, done) => {
     if (request.user && request.user.id) {

@@ -3,11 +3,20 @@ const { authMiddleware, adminMiddleware } = require('../auth');
 const { nanoid } = require('nanoid');
 const path = require('path');
 const fs = require('fs');
-
-const MEDIA_DIR = path.join(__dirname, '..', '..', 'media');
+const { needsTranscoding, enqueue } = require('../transcode');
+const { MEDIA_DIR, pickBestMediaDir } = require('../utils');
 
 const ALLOWED_EXTENSIONS = ['.mp4', '.mkv', '.webm', '.mov', '.avi'];
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+
+function estimateFileSize(request) {
+  const contentLength = request.headers['content-length'];
+  if (contentLength) {
+    const parsed = parseInt(contentLength, 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+}
 
 async function uploadRoutes(fastify) {
   fastify.post('/api/upload', { preHandler: [authMiddleware, adminMiddleware], bodyLimit: 100 * 1024 * 1024 }, async (request, reply) => {
@@ -44,19 +53,24 @@ async function uploadRoutes(fastify) {
     }
     const safeName = `${id}${ext}`;
 
+    const estimated = estimateFileSize(request);
     let fileDir;
     let filePath;
 
     if (type === 'movie') {
-      fileDir = path.join(MEDIA_DIR, 'movies');
+      const baseDir = estimated !== null
+        ? pickBestMediaDir(estimated, 'movies')
+        : MEDIA_DIR;
+      fileDir = path.join(baseDir, 'movies');
       filePath = path.join(fileDir, safeName);
     } else {
       const safeTitle = title.trim().replace(/[^a-zA-Z0-9]/g, '_');
-      fileDir = path.join(MEDIA_DIR, 'series', safeTitle);
+      const baseDir = estimated !== null
+        ? pickBestMediaDir(estimated, path.join('series', safeTitle))
+        : MEDIA_DIR;
+      fileDir = path.join(baseDir, 'series', safeTitle);
       filePath = path.join(fileDir, safeName);
     }
-
-    fs.mkdirSync(fileDir, { recursive: true });
 
     const writeStream = fs.createWriteStream(filePath);
     const fileSize = await new Promise((resolve, reject) => {
@@ -81,6 +95,11 @@ async function uploadRoutes(fastify) {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(id, title.trim(), type, description, year, genre, filePath, fileSize, request.user.id);
 
+        if (needsTranscoding(filePath)) {
+          db.prepare('UPDATE media SET transcode_status = ? WHERE id = ?').run('pending', id);
+          enqueue('movie', id);
+        }
+
         return { media: db.prepare('SELECT * FROM media WHERE id = ?').get(id) };
       }
 
@@ -104,6 +123,11 @@ async function uploadRoutes(fastify) {
           `INSERT INTO episodes (id, series_id, season_number, episode_number, title, file_path, file_size)
            VALUES (?, ?, ?, ?, ?, ?, ?)`
         ).run(episodeId, series.id, seasonNumber, episodeNumber, `Episode ${episodeNumber}`, filePath, fileSize);
+
+        if (needsTranscoding(filePath)) {
+          db.prepare('UPDATE episodes SET transcode_status = ? WHERE id = ?').run('pending', episodeId);
+          enqueue('episode', episodeId);
+        }
 
         const episode = db.prepare('SELECT * FROM episodes WHERE id = ?').get(episodeId);
         return { series: db.prepare('SELECT * FROM media WHERE id = ?').get(series.id), episode };
@@ -136,8 +160,11 @@ async function uploadRoutes(fastify) {
       return reply.status(400).send({ error: `File type ${ext} not allowed for images. Allowed: ${IMAGE_EXTENSIONS.join(', ')}` });
     }
 
-    const fileDir = path.join(MEDIA_DIR, 'posters');
-    fs.mkdirSync(fileDir, { recursive: true });
+    const estimated = estimateFileSize(request);
+    const baseDir = estimated !== null
+      ? pickBestMediaDir(estimated, 'posters')
+      : MEDIA_DIR;
+    const fileDir = path.join(baseDir, 'posters');
     const fileName = `${media.id}-${imageType}${ext}`;
     const filePath = path.join(fileDir, fileName);
 
@@ -176,8 +203,11 @@ async function uploadRoutes(fastify) {
       return reply.status(400).send({ error: 'File type not allowed for subtitles. Allowed: .srt, .vtt' });
     }
 
-    const fileDir = path.join(MEDIA_DIR, 'subtitles');
-    fs.mkdirSync(fileDir, { recursive: true });
+    const estimated = estimateFileSize(request);
+    const baseDir = estimated !== null
+      ? pickBestMediaDir(estimated, 'subtitles')
+      : MEDIA_DIR;
+    const fileDir = path.join(baseDir, 'subtitles');
     const subId = nanoid();
     const fileName = `${subId}${ext}`;
     const filePath = path.join(fileDir, fileName);
