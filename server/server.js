@@ -45,7 +45,7 @@ async function start() {
   await fastify.register(statik, {
     root: path.join(__dirname, 'dist'),
     prefix: '/',
-    decorateReply: false,
+    decorateReply: true,
   });
 
   fastify.setNotFoundHandler((request, reply) => {
