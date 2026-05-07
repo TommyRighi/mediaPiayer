@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 export default function AdminPage() {
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState(null);
+  const [lastAction, setLastAction] = useState(null);
   const [media, setMedia] = useState([]);
   const [storageInfo, setStorageInfo] = useState(null);
   const [newDir, setNewDir] = useState('');
@@ -19,6 +20,7 @@ export default function AdminPage() {
   async function handleScan() {
     setScanning(true);
     setScanResult(null);
+    setLastAction('scan');
     try {
       const result = await api.admin.scan();
       setScanResult(result);
@@ -33,6 +35,7 @@ export default function AdminPage() {
   async function handleClean() {
     setScanning(true);
     setScanResult(null);
+    setLastAction('clean');
     try {
       const result = await api.admin.clean();
       setScanResult(result);
@@ -217,9 +220,10 @@ export default function AdminPage() {
 
           {scanResult && !scanResult.error && (
             <div className="mt-4 text-sm" style={{ color: 'var(--jf-primary)' }}>
-              {scanResult.movies != null && <>Found: {scanResult.movies} movies, {scanResult.series} series ({scanResult.episodes} episodes)</>}
+              {scanResult.movies || scanResult.series || scanResult.episodes
+                ? <>{lastAction === 'clean' ? 'Removed: ' : 'Found: '}{scanResult.movies} movies, {scanResult.series} series ({scanResult.episodes} episodes)</>
+                : 'Nothing to do.'}
               {scanResult.converted > 0 && ` · ${scanResult.converted} queued for conversion`}
-              {scanResult.removedMovies != null && <>Removed: {scanResult.movies} movies, {scanResult.series} series ({scanResult.episodes} episodes)</>}
             </div>
           )}
           {scanResult?.error && (

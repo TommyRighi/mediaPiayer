@@ -252,6 +252,7 @@ async function cleanMissingMedia() {
     if (!movie.file_path || !fs.existsSync(movie.file_path)) {
       deleteImageVariants(movie.poster_path);
       deleteImageVariants(movie.backdrop_path);
+      db.prepare('DELETE FROM watch_parties WHERE media_id = ?').run(movie.id);
       db.prepare('DELETE FROM media WHERE id = ?').run(movie.id);
       results.movies++;
     }
@@ -260,6 +261,8 @@ async function cleanMissingMedia() {
   const episodes = db.prepare('SELECT id, file_path FROM episodes').all();
   for (const ep of episodes) {
     if (!ep.file_path || !fs.existsSync(ep.file_path)) {
+      db.prepare('DELETE FROM watch_parties WHERE episode_id = ?').run(ep.id);
+      db.prepare('DELETE FROM watch_progress WHERE episode_id = ?').run(ep.id);
       db.prepare('DELETE FROM episodes WHERE id = ?').run(ep.id);
       results.episodes++;
     }
@@ -273,6 +276,7 @@ async function cleanMissingMedia() {
   for (const s of series) {
     deleteImageVariants(s.poster_path);
     deleteImageVariants(s.backdrop_path);
+    db.prepare('DELETE FROM watch_parties WHERE media_id = ?').run(s.id);
     db.prepare('DELETE FROM media WHERE id = ?').run(s.id);
     results.series++;
   }
