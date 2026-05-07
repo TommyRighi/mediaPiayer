@@ -40,6 +40,29 @@ function getDuration(filePath) {
   }
 }
 
+function getResolution(filePath) {
+  try {
+    const output = execSync(
+      `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "${filePath}"`,
+      { encoding: 'utf-8', timeout: 15000 }
+    ).trim();
+    const [width, height] = output.split(',').map(Number);
+    return { width: width || 0, height: height || 0 };
+  } catch {
+    return { width: 0, height: 0 };
+  }
+}
+
+const ALL_RENDITIONS = [
+  { name: '480p',  width: 854,  height: 480,  videoBitrate: '800k',  maxrate: '856k',   bufsize: '1200k', audioBitrate: '96k' },
+  { name: '720p',  width: 1280, height: 720,  videoBitrate: '2500k', maxrate: '2675k',  bufsize: '4000k', audioBitrate: '128k' },
+  { name: '1080p', width: 1920, height: 1080, videoBitrate: '5000k', maxrate: '5350k',  bufsize: '8000k', audioBitrate: '192k' },
+];
+
+function getRenditions(sourceHeight) {
+  return ALL_RENDITIONS.filter(r => sourceHeight >= r.height);
+}
+
 function needsTranscoding(filePath) {
   if (!fs.existsSync(filePath)) return false;
   const info = getVideoCodecInfo(filePath);
@@ -48,19 +71,63 @@ function needsTranscoding(filePath) {
   return videoCodec !== 'h264' || (audioCodec !== 'aac' && audioCodec !== 'unknown');
 }
 
-function transcodeFile(inputPath, outputPath, onProgress) {
+function hasHLS(hlsDir) {
+  return fs.existsSync(path.join(hlsDir, 'master.m3u8'));
+}
+
+function transcodeToHLS(inputPath, outputDir, onProgress) {
   return new Promise((resolve, reject) => {
+    fs.mkdirSync(outputDir, { recursive: true });
+
+    const sourceRes = getResolution(inputPath);
+    const renditions = getRenditions(sourceRes.height);
+
+    if (renditions.length === 0) {
+      renditions.push({
+        name: 'orig', width: sourceRes.width, height: sourceRes.height,
+        videoBitrate: '1500k', maxrate: '1605k', bufsize: '2400k', audioBitrate: '128k',
+      });
+      renditions[0].origScale = true;
+    }
+
+    const filterParts = [];
+    const mapParts = [];
+    const codecParts = [];
+
+    for (let i = 0; i < renditions.length; i++) {
+      const r = renditions[i];
+      if (r.origScale) {
+        filterParts.push(`[0:v]copy[v${i}out]`);
+      } else {
+        filterParts.push(
+          `[v${i}]scale=w=${r.width}:h=${r.height}:force_original_aspect_ratio=decrease,pad=${r.width}:${r.height}:(ow-iw)/2:(oh-ih)/2[v${i}out]`
+        );
+      }
+      mapParts.push(`[v${i}out]`, `-c:v:${i}`, 'libx264',
+        `-b:v:${i}`, r.videoBitrate, `-maxrate:v:${i}`, r.maxrate, `-bufsize:v:${i}`, r.bufsize,
+        '-preset', 'fast', '-crf', '23');
+      mapParts.push('-map', 'a:0', `-c:a:${i}`, 'aac', `-b:a:${i}`, r.audioBitrate, '-ac', '2');
+    }
+
+    const splitCount = renditions.length;
+    const splitFilter = `[0:v]split=${splitCount}${renditions.map((_, i) => `[v${i}]`).join('')}`;
+
+    const varStreamMap = renditions.map((r, i) => `v:${i},a:${i},name:${r.name}`).join(' ');
+
     const args = [
       '-y',
       '-i', inputPath,
-      '-c:v', 'libx264',
-      '-preset', 'fast',
-      '-crf', '23',
-      '-c:a', 'aac',
-      '-b:a', '128k',
-      '-movflags', '+faststart',
+      '-filter_complex', `${splitFilter};${filterParts.join(';')}`,
+      ...mapParts,
+      '-f', 'hls',
+      '-hls_time', '6',
+      '-hls_list_size', '0',
+      '-hls_playlist_type', 'vod',
+      '-hls_segment_filename', path.join(outputDir, '%v', 'segment_%03d.ts'),
+      '-var_stream_map', varStreamMap,
+      '-master_pl_name', 'master.m3u8',
       '-max_muxing_queue_size', '1024',
-      outputPath,
+      path.join(outputDir, '%v', 'playlist.m3u8'),
     ];
 
     const proc = spawn('ffmpeg', args);
@@ -97,6 +164,16 @@ function updateJobStatus(job, dbStatus) {
   }
 }
 
+function getHlsDirForMedia(mediaId) {
+  const { MEDIA_DIR } = require('./utils');
+  return path.join(MEDIA_DIR, 'hls', 'movies', mediaId);
+}
+
+function getHlsDirForEpisode(episodeId) {
+  const { MEDIA_DIR } = require('./utils');
+  return path.join(MEDIA_DIR, 'hls', 'episodes', episodeId);
+}
+
 async function processMovie(job) {
   const db = getDb();
   const media = db.prepare('SELECT * FROM media WHERE id = ?').get(job.mediaId);
@@ -106,23 +183,18 @@ async function processMovie(job) {
   }
 
   const inputPath = media.file_path;
-  const dir = path.dirname(inputPath);
-  const outputPath = path.join(dir, `${job.mediaId}_h264.mp4`);
+  const hlsDir = getHlsDirForMedia(job.mediaId);
 
   job.inputPath = inputPath;
-  job.outputPath = outputPath;
+  job.outputPath = path.join(hlsDir, 'master.m3u8');
   job.duration = getDuration(inputPath);
 
-  await transcodeFile(inputPath, outputPath, (seconds) => {
+  await transcodeToHLS(inputPath, hlsDir, (seconds) => {
     job.progress = job.duration > 0 ? Math.min(99, Math.round((seconds / job.duration) * 100)) : 0;
   });
 
-  const stat = fs.statSync(outputPath);
-
   db.prepare('UPDATE media SET file_path = ?, file_size = ?, transcode_status = ? WHERE id = ?')
-    .run(outputPath, stat.size, 'completed', job.mediaId);
-
-  try { fs.unlinkSync(inputPath); } catch {}
+    .run(job.outputPath, 0, 'completed', job.mediaId);
 
   job.progress = 100;
   job.status = 'completed';
@@ -137,23 +209,18 @@ async function processEpisode(job) {
   }
 
   const inputPath = episode.file_path;
-  const dir = path.dirname(inputPath);
-  const outputPath = path.join(dir, `${job.episodeId}_h264.mp4`);
+  const hlsDir = getHlsDirForEpisode(job.episodeId);
 
   job.inputPath = inputPath;
-  job.outputPath = outputPath;
+  job.outputPath = path.join(hlsDir, 'master.m3u8');
   job.duration = getDuration(inputPath);
 
-  await transcodeFile(inputPath, outputPath, (seconds) => {
+  await transcodeToHLS(inputPath, hlsDir, (seconds) => {
     job.progress = job.duration > 0 ? Math.min(99, Math.round((seconds / job.duration) * 100)) : 0;
   });
 
-  const stat = fs.statSync(outputPath);
-
   db.prepare('UPDATE episodes SET file_path = ?, file_size = ?, transcode_status = ? WHERE id = ?')
-    .run(outputPath, stat.size, 'completed', job.episodeId);
-
-  try { fs.unlinkSync(inputPath); } catch {}
+    .run(job.outputPath, 0, 'completed', job.episodeId);
 
   job.progress = 100;
   job.status = 'completed';
@@ -176,13 +243,7 @@ async function doProcessJob(job) {
     return;
   }
 
-  const fileSize = job.type === 'movie'
-    ? getDb().prepare('SELECT file_size FROM media WHERE id = ?').get(job.mediaId)?.file_size
-    : getDb().prepare('SELECT file_size FROM episodes WHERE id = ?').get(job.episodeId)?.file_size;
-
-  if (fileSize > 0) {
-    jobs.delete(job.id);
-  }
+  jobs.delete(job.id);
 }
 
 async function processQueue() {
@@ -254,4 +315,4 @@ function resumePendingJobs() {
   }
 }
 
-module.exports = { needsTranscoding, getDuration, getVideoCodecInfo, enqueue, getStatus, resumePendingJobs };
+module.exports = { needsTranscoding, hasHLS, getHlsDirForMedia, getHlsDirForEpisode, getDuration, getVideoCodecInfo, enqueue, getStatus, resumePendingJobs };

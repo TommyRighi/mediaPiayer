@@ -1,6 +1,8 @@
 const { getDb } = require('../db');
 const { authMiddleware, mediaAuth } = require('../auth');
-const { streamVideo } = require('../utils');
+const { streamVideo, streamHlsFile, isWithinAnyDir, MEDIA_DIRS } = require('../utils');
+const path = require('path');
+const fs = require('fs');
 
 async function seriesRoutes(fastify) {
   fastify.get('/api/series/:id/episodes', { preHandler: authMiddleware }, async (request, reply) => {
@@ -16,6 +18,7 @@ async function seriesRoutes(fastify) {
 
     const seasons = {};
     for (const ep of episodes) {
+      ep.hls_available = !!(ep.file_path && ep.file_path.endsWith('.m3u8'));
       if (!seasons[ep.season_number]) {
         seasons[ep.season_number] = [];
       }
@@ -52,6 +55,24 @@ async function seriesRoutes(fastify) {
     }
 
     return streamVideo(request, reply, episode.file_path);
+  });
+
+  fastify.get('/api/episodes/:id/hls/*', { preHandler: mediaAuth }, async (request, reply) => {
+    const db = getDb();
+    const episode = db.prepare('SELECT file_path FROM episodes WHERE id = ?').get(request.params.id);
+    if (!episode || !episode.file_path) {
+      return reply.status(404).send({ error: 'HLS not found' });
+    }
+
+    const subPath = request.params['*'];
+    const hlsDir = path.dirname(episode.file_path);
+    const filePath = path.join(hlsDir, subPath);
+
+    if (!isWithinAnyDir(filePath, MEDIA_DIRS)) {
+      return reply.status(403).send({ error: 'Invalid file path' });
+    }
+
+    return streamHlsFile(request, reply, filePath);
   });
 
   fastify.get('/api/episodes/:id/subtitles', { preHandler: authMiddleware }, async (request) => {

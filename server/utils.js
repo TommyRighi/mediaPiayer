@@ -19,9 +19,46 @@ const VIDEO_MIME_TYPES = {
   '.avi': 'video/x-msvideo',
 };
 
+const HLS_MIME = 'application/vnd.apple.mpegurl';
+const TS_MIME = 'video/mp2t';
+
 function getVideoMimeType(filePath) {
   const ext = path.extname(filePath).toLowerCase();
   return VIDEO_MIME_TYPES[ext] || 'video/mp4';
+}
+
+function getHlsMimeType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.m3u8') return HLS_MIME;
+  if (ext === '.ts') return TS_MIME;
+  return 'application/octet-stream';
+}
+
+async function streamHlsFile(request, reply, filePath) {
+  if (!isWithinAnyDir(filePath, MEDIA_DIRS)) {
+    return reply.status(403).send({ error: 'Invalid file path' });
+  }
+  if (!fs.existsSync(filePath)) {
+    return reply.status(404).send({ error: 'HLS file not found on disk' });
+  }
+
+  const stat = fs.statSync(filePath);
+  const contentType = getHlsMimeType(filePath);
+  const etag = `"${stat.size}-${stat.mtimeMs}"`;
+
+  if (request.headers['if-none-match'] === etag) {
+    return reply.status(304).send('');
+  }
+
+  reply.headers({
+    'Content-Type': contentType,
+    'Content-Length': stat.size,
+    'Cache-Control': 'no-cache',
+    'ETag': etag,
+    'Access-Control-Allow-Origin': '*',
+  });
+
+  return fs.createReadStream(filePath);
 }
 
 async function streamVideo(request, reply, filePath) {
@@ -204,7 +241,8 @@ function setMediaDirs(dirs) {
 const { IMAGE_SIZES } = require('./imageProcessor');
 
 module.exports = {
-  isWithinDir, isWithinAnyDir, getVideoMimeType, streamVideo, MEDIA_DIR, MEDIA_DIRS,
+  isWithinDir, isWithinAnyDir, getVideoMimeType, getHlsMimeType, streamVideo, streamHlsFile,
+  HLS_MIME, TS_MIME, MEDIA_DIR, MEDIA_DIRS,
   getDiskFree, pickBestMediaDir, setMediaDirs,
   SUBTITLE_EXTENSIONS, IMAGE_EXTENSIONS,
   getSubtitleMimeType, getImageMimeType, srtToVtt,

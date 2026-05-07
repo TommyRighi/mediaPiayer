@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import Plyr from 'plyr';
+import Hls from 'hls.js';
 import 'plyr/css';
 import { getToken } from '../api';
 
@@ -7,6 +8,7 @@ export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode,
   const containerRef = useRef(null);
   const videoRef = useRef(null);
   const playerRef = useRef(null);
+  const hlsRef = useRef(null);
   const progressTimerRef = useRef(null);
   const initialTimeAppliedRef = useRef(false);
   const onNextEpisodeRef = useRef(onNextEpisode);
@@ -23,8 +25,14 @@ export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode,
     if (v && onProgressRef.current) onProgressRef.current(Math.floor(v.currentTime), false, Math.floor(v.duration || 0));
   }, []);
 
+  const isHls = src.endsWith('.m3u8');
+
   useEffect(() => {
     if (!videoRef.current || playerRef.current) return;
+
+    if (isHls && Hls.isSupported()) {
+      window.Hls = Hls;
+    }
 
     const player = new Plyr(videoRef.current, {
       controls: [
@@ -32,7 +40,8 @@ export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode,
         'mute', 'volume', 'settings', 'captions', 'pip', 'airplay',
         'fullscreen',
       ],
-      settings: ['captions', 'speed'],
+      settings: ['captions', 'speed', 'quality'],
+      quality: { default: 0, options: [1080, 720, 480] },
       autopause: true,
       autoplay: true,
       invertTime: false,
@@ -46,6 +55,26 @@ export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode,
 
     playerRef.current = player;
 
+    if (isHls && Hls.isSupported()) {
+      const hls = new Hls({
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+      });
+      hlsRef.current = hls;
+      hls.loadSource(src);
+      hls.attachMedia(videoRef.current);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (player.isReady) {
+          const v = videoRef.current;
+          if (v && initialTime > 0 && !initialTimeAppliedRef.current) {
+            v.currentTime = initialTime;
+            initialTimeAppliedRef.current = true;
+          }
+        }
+      });
+    }
+
     player.on('playing', () => setPlaying(true));
     player.on('pause', () => setPlaying(false));
     player.on('ended', () => {
@@ -55,8 +84,15 @@ export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode,
     });
 
     return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
       player.destroy();
       playerRef.current = null;
+      if (window.Hls === Hls) {
+        delete window.Hls;
+      }
     };
   }, []);
 
@@ -95,6 +131,8 @@ export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode,
       initialTimeAppliedRef.current = true;
     };
 
+    if (isHls) return;
+
     if (v.readyState >= 1) {
       seek();
     } else {
@@ -115,7 +153,7 @@ export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode,
     <div ref={containerRef} className="vp-container">
       <video
         ref={videoRef}
-        src={src}
+        src={isHls ? undefined : src}
         playsInline
         preload="auto"
         crossOrigin="anonymous"

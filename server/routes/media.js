@@ -1,6 +1,6 @@
 const { getDb } = require('../db');
 const { authMiddleware, mediaAuth, adminMiddleware } = require('../auth');
-const { isWithinDir, isWithinAnyDir, streamVideo, MEDIA_DIR, MEDIA_DIRS, getImageMimeType, getSubtitleMimeType, srtToVtt, IMAGE_SIZES } = require('../utils');
+const { isWithinDir, isWithinAnyDir, streamVideo, streamHlsFile, MEDIA_DIR, MEDIA_DIRS, getImageMimeType, getSubtitleMimeType, srtToVtt, IMAGE_SIZES } = require('../utils');
 const { generateVariant } = require('../imageProcessor');
 const path = require('path');
 const fs = require('fs');
@@ -28,6 +28,10 @@ async function mediaRoutes(fastify) {
 
     sql += ' ORDER BY created_at DESC';
     const media = db.prepare(sql).all(...params);
+
+    for (const item of media) {
+      item.hls_available = !!(item.file_path && item.file_path.endsWith('.m3u8'));
+    }
 
     if (request.user && media.length > 0) {
       const movieIds = media.filter(m => m.type === 'movie').map(m => m.id);
@@ -116,6 +120,8 @@ async function mediaRoutes(fastify) {
       return reply.status(404).send({ error: 'Media not found' });
     }
 
+    media.hls_available = !!(media.file_path && media.file_path.endsWith('.m3u8'));
+
     if (media.type === 'series') {
       const episodes = db.prepare(
         'SELECT * FROM episodes WHERE series_id = ? ORDER BY season_number, episode_number'
@@ -123,6 +129,7 @@ async function mediaRoutes(fastify) {
 
       const seasons = {};
       for (const ep of episodes) {
+        ep.hls_available = !!(ep.file_path && ep.file_path.endsWith('.m3u8'));
         if (!seasons[ep.season_number]) {
           seasons[ep.season_number] = [];
         }
@@ -193,6 +200,24 @@ async function mediaRoutes(fastify) {
     }
 
     return streamVideo(request, reply, media.file_path);
+  });
+
+  fastify.get('/api/media/:id/hls/*', { preHandler: mediaAuth }, async (request, reply) => {
+    const db = getDb();
+    const media = db.prepare('SELECT file_path FROM media WHERE id = ?').get(request.params.id);
+    if (!media || !media.file_path) {
+      return reply.status(404).send({ error: 'HLS not found' });
+    }
+
+    const subPath = request.params['*'];
+    const hlsDir = path.dirname(media.file_path);
+    const filePath = path.join(hlsDir, subPath);
+
+    if (!isWithinAnyDir(filePath, MEDIA_DIRS)) {
+      return reply.status(403).send({ error: 'Invalid file path' });
+    }
+
+    return streamHlsFile(request, reply, filePath);
   });
 
   fastify.get('/api/media/:id/subtitles', { preHandler: authMiddleware }, async (request) => {
@@ -284,10 +309,16 @@ async function mediaRoutes(fastify) {
       for (const ep of episodes) {
         if (ep.file_path && isWithinAnyDir(ep.file_path, MEDIA_DIRS) && fs.existsSync(ep.file_path)) {
           fs.unlinkSync(ep.file_path);
+          if (ep.file_path.endsWith('.m3u8')) {
+            try { fs.rmSync(path.dirname(ep.file_path), { recursive: true, force: true }); } catch {}
+          }
         }
       }
     } else if (media.file_path && isWithinAnyDir(media.file_path, MEDIA_DIRS) && fs.existsSync(media.file_path)) {
       fs.unlinkSync(media.file_path);
+      if (media.file_path.endsWith('.m3u8')) {
+        try { fs.rmSync(path.dirname(media.file_path), { recursive: true, force: true }); } catch {}
+      }
     }
 
     if (media.poster_path && isWithinAnyDir(media.poster_path, MEDIA_DIRS) && fs.existsSync(media.poster_path)) {

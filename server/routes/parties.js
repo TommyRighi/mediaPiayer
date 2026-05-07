@@ -63,7 +63,8 @@ async function partyRoutes(fastify) {
   fastify.get('/api/parties/:id', { preHandler: authMiddleware }, async (request, reply) => {
     const db = getDb();
     const party = db.prepare(
-      `SELECT wp.*, m.title AS media_title, m.type AS media_type, m.poster_path, e.title AS episode_title
+      `SELECT wp.*, m.title AS media_title, m.type AS media_type, m.poster_path, m.file_path AS media_file_path,
+              e.title AS episode_title, e.file_path AS episode_file_path
        FROM watch_parties wp
        JOIN media m ON wp.media_id = m.id
        LEFT JOIN episodes e ON wp.episode_id = e.id

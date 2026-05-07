@@ -10,9 +10,13 @@ export default function WatchPage() {
   const [episode, setEpisode] = useState(null);
   const [transcodeStatus, setTranscodeStatus] = useState(null);
 
+  const hlsAvailable = episodeId
+    ? episode?.hls_available
+    : media?.hls_available;
+
   const videoUrl = episodeId
-    ? api.media.episodeVideoUrl(episodeId)
-    : api.media.videoUrl(mediaId);
+    ? (hlsAvailable ? api.media.episodeHlsUrl(episodeId) : api.media.episodeVideoUrl(episodeId))
+    : (hlsAvailable ? api.media.hlsUrl(mediaId) : api.media.videoUrl(mediaId));
 
   useEffect(() => {
     let timer;

@@ -41,6 +41,8 @@ export const api = {
     delete: (id) => request('DELETE', `/media/${id}`),
     videoUrl: (id) => `${BASE}/media/${id}/video?token=${token()}`,
     episodeVideoUrl: (id) => `${BASE}/episodes/${id}/video?token=${token()}`,
+    hlsUrl: (id) => `${BASE}/media/${id}/hls/master.m3u8?token=${token()}`,
+    episodeHlsUrl: (id) => `${BASE}/episodes/${id}/hls/master.m3u8?token=${token()}`,
     posterUrl: (id, size) => `${BASE}/media/${id}/poster?${size ? 'size=' + size + '&' : ''}token=${token()}`,
     backdropUrl: (id, size) => `${BASE}/media/${id}/backdrop?${size ? 'size=' + size + '&' : ''}token=${token()}`,
     subtitles: (id) => request('GET', `/media/${id}/subtitles`),

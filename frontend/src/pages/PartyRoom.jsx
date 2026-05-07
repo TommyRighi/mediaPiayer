@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, getToken } from '../api';
 import Plyr from 'plyr';
+import Hls from 'hls.js';
 import 'plyr/css';
 
 export default function PartyRoom() {
@@ -10,6 +11,7 @@ export default function PartyRoom() {
   const videoRef = useRef(null);
   const wsRef = useRef(null);
   const playerRef = useRef(null);
+  const hlsRef = useRef(null);
 
   const [party, setParty] = useState(null);
   const [members, setMembers] = useState([]);
@@ -18,19 +20,37 @@ export default function PartyRoom() {
 
   const token = getToken();
   const isMovie = party?.media_type === 'movie';
-  const videoUrl = isMovie
-    ? api.media.videoUrl(party?.media_id)
-    : party?.episode_id ? api.media.episodeVideoUrl(party?.episode_id) : null;
+  const hlsAvailable = isMovie
+    ? !!(party?.media_file_path?.endsWith('.m3u8'))
+    : !!(party?.episode_file_path?.endsWith('.m3u8'));
+
+  const videoUrl = useMemo(() => {
+    if (!party) return null;
+    if (hlsAvailable) {
+      return isMovie
+        ? api.media.hlsUrl(party.media_id)
+        : api.media.episodeHlsUrl(party.episode_id);
+    }
+    return isMovie
+      ? api.media.videoUrl(party.media_id)
+      : party.episode_id ? api.media.episodeVideoUrl(party.episode_id) : null;
+  }, [party, hlsAvailable, isMovie]);
+
+  const isHls = videoUrl?.endsWith('.m3u8') || false;
 
   useEffect(() => {
     api.parties.get(partyId).then((data) => {
       setParty(data.party);
       setMembers(data.members);
-}).catch(() => navigate('/'));
+    }).catch(() => navigate('/'));
   }, [partyId, navigate]);
 
   useEffect(() => {
-    if (!videoRef.current || !party) return;
+    if (!videoRef.current || !party || !videoUrl) return;
+
+    if (isHls && Hls.isSupported()) {
+      window.Hls = Hls;
+    }
 
     const player = new Plyr(videoRef.current, {
       controls: [
@@ -38,7 +58,8 @@ export default function PartyRoom() {
         'mute', 'volume', 'settings', 'captions', 'pip', 'airplay',
         'fullscreen',
       ],
-      settings: ['captions', 'speed'],
+      settings: ['captions', 'speed', 'quality'],
+      quality: { default: 0, options: [1080, 720, 480] },
       autopause: true,
       autoplay: false,
       keyboard: { focused: true, global: true },
@@ -47,20 +68,47 @@ export default function PartyRoom() {
 
     playerRef.current = player;
 
-    if (party.position > 0) {
-      player.once('loadedmetadata', () => {
-        player.currentTime = party.position;
-        if (party.is_playing) {
-          player.play().catch(() => {});
+    if (isHls && Hls.isSupported()) {
+      const hls = new Hls({
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+      });
+      hlsRef.current = hls;
+      hls.loadSource(videoUrl);
+      hls.attachMedia(videoRef.current);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        const v = videoRef.current;
+        if (v && party.position > 0) {
+          v.currentTime = party.position;
+          if (party.is_playing) {
+            v.play().catch(() => {});
+          }
         }
       });
-    } else if (party.is_playing) {
-      player.play().catch(() => {});
+    } else {
+      if (party.position > 0) {
+        player.once('loadedmetadata', () => {
+          player.currentTime = party.position;
+          if (party.is_playing) {
+            player.play().catch(() => {});
+          }
+        });
+      } else if (party.is_playing) {
+        player.play().catch(() => {});
+      }
     }
 
     return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
       player.destroy();
       playerRef.current = null;
+      if (window.Hls === Hls) {
+        delete window.Hls;
+      }
     };
   }, [videoUrl, party]);
 
@@ -152,7 +200,7 @@ export default function PartyRoom() {
             <div style={{ width: '100%', maxWidth: '100%' }}>
               <video
                 ref={videoRef}
-                src={videoUrl}
+                src={isHls ? undefined : videoUrl}
                 playsInline
                 preload="auto"
                 crossOrigin="anonymous"
