@@ -19,7 +19,7 @@ function estimateFileSize(request) {
 }
 
 async function uploadRoutes(fastify) {
-  fastify.post('/api/upload', { preHandler: [authMiddleware, adminMiddleware], bodyLimit: 100 * 1024 * 1024 }, async (request, reply) => {
+  fastify.post('/api/upload', { preHandler: [authMiddleware, adminMiddleware], bodyLimit: 5 * 1024 * 1024 * 1024 }, async (request, reply) => {
     const data = await request.file();
     if (!data) {
       return reply.status(400).send({ error: 'No file uploaded' });

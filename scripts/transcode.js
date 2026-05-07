@@ -87,7 +87,7 @@ function cmdStatus() {
 
 function cmdRetry() {
   const db = getDb();
-  const { enqueue, needsTranscoding } = require('../server/transcode');
+  const { enqueue, needsTranscoding, getVideoCodecInfo } = require('../server/transcode');
 
   const failedMovies = db.prepare(
     `SELECT id, title, file_path FROM media WHERE transcode_status = 'failed' AND file_path IS NOT NULL`
@@ -105,6 +105,11 @@ function cmdRetry() {
   let retried = 0;
 
   for (const m of failedMovies) {
+    const info = getVideoCodecInfo(m.file_path);
+    if (!info) {
+      console.log(`  ✗  ${m.title}  (file unreadable — may be corrupted)`);
+      continue;
+    }
     if (needsTranscoding(m.file_path)) {
       db.prepare("UPDATE media SET transcode_status = 'pending' WHERE id = ?").run(m.id);
       enqueue('movie', m.id);
@@ -117,6 +122,11 @@ function cmdRetry() {
   }
 
   for (const e of failedEps) {
+    const info = getVideoCodecInfo(e.file_path);
+    if (!info) {
+      console.log(`  ✗  ${e.title}  (file unreadable — may be corrupted)`);
+      continue;
+    }
     if (needsTranscoding(e.file_path)) {
       db.prepare("UPDATE episodes SET transcode_status = 'pending' WHERE id = ?").run(e.id);
       enqueue('episode', e.id);

@@ -23,7 +23,7 @@ function getVideoCodecInfo(filePath) {
     }
     return { videoCodec, audioCodec };
   } catch (err) {
-    return { videoCodec: 'unknown', audioCodec: 'unknown' };
+    return null;
   }
 }
 
@@ -42,7 +42,9 @@ function getDuration(filePath) {
 
 function needsTranscoding(filePath) {
   if (!fs.existsSync(filePath)) return false;
-  const { videoCodec, audioCodec } = getVideoCodecInfo(filePath);
+  const info = getVideoCodecInfo(filePath);
+  if (!info) return false;
+  const { videoCodec, audioCodec } = info;
   return videoCodec !== 'h264' || (audioCodec !== 'aac' && audioCodec !== 'unknown');
 }
 

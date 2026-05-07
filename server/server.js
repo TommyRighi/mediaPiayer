@@ -30,7 +30,7 @@ const fastify = Fastify({
       options: { colorize: true },
     },
   },
-  bodyLimit: 100 * 1024 * 1024,
+  bodyLimit: 5 * 1024 * 1024 * 1024,
 });
 
 async function start() {
@@ -39,7 +39,7 @@ async function start() {
     ? (process.env.CORS_ORIGIN || false)
     : true;
   await fastify.register(cors, { origin: corsOrigin });
-  await fastify.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } });
+  await fastify.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 * 1024 } });
   await fastify.register(websocket);
 
   await fastify.register(statik, {
