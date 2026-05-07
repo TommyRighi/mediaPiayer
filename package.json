@@ -11,6 +11,7 @@
     "deploy": "npm install && cd frontend && npm install && npm run build && cd .. && npm start",
     "transcode:start": "node scripts/transcode.js start",
     "transcode:status": "node scripts/transcode.js status",
+    "transcode:retry": "node scripts/transcode.js retry",
     "transcode:list": "node scripts/transcode.js list"
   },
   "dependencies": {

@@ -13,6 +13,7 @@ function printHelp() {
     start       Scan media folders and queue incompatible files for conversion.
                 (requires ffmpeg + ffprobe installed)
     status      Show conversion progress for all in-progress / pending jobs.
+    retry       Retry all failed conversion jobs (resets status → pending, re-enqueues).
     list        List all media & episodes with their transcode status.
     help        Show this help.
   `);
@@ -84,6 +85,52 @@ function cmdStatus() {
   console.log(`Total: ${pendingMovies.length + pendingEps.length} job(s) pending or converting.\n`);
 }
 
+function cmdRetry() {
+  const db = getDb();
+  const { enqueue, needsTranscoding } = require('../server/transcode');
+
+  const failedMovies = db.prepare(
+    `SELECT id, title, file_path FROM media WHERE transcode_status = 'failed' AND file_path IS NOT NULL`
+  ).all();
+
+  const failedEps = db.prepare(
+    `SELECT e.id, e.title, e.file_path FROM episodes e WHERE e.transcode_status = 'failed' AND e.file_path IS NOT NULL`
+  ).all();
+
+  if (failedMovies.length === 0 && failedEps.length === 0) {
+    console.log('No failed jobs to retry.\n');
+    return;
+  }
+
+  let retried = 0;
+
+  for (const m of failedMovies) {
+    if (needsTranscoding(m.file_path)) {
+      db.prepare("UPDATE media SET transcode_status = 'pending' WHERE id = ?").run(m.id);
+      enqueue('movie', m.id);
+      console.log(`  ↻  ${m.title}`);
+      retried++;
+    } else {
+      db.prepare("UPDATE media SET transcode_status = 'completed' WHERE id = ?").run(m.id);
+      console.log(`  ✓  ${m.title}  (already compatible, marked as complete)`);
+    }
+  }
+
+  for (const e of failedEps) {
+    if (needsTranscoding(e.file_path)) {
+      db.prepare("UPDATE episodes SET transcode_status = 'pending' WHERE id = ?").run(e.id);
+      enqueue('episode', e.id);
+      console.log(`  ↻  ${e.title}`);
+      retried++;
+    } else {
+      db.prepare("UPDATE episodes SET transcode_status = 'completed' WHERE id = ?").run(e.id);
+      console.log(`  ✓  ${e.title}  (already compatible, marked as complete)`);
+    }
+  }
+
+  console.log(`\n${retried} job(s) re-queued. Make sure the server is running to process them.\n`);
+}
+
 function cmdList() {
   const db = getDb();
 
@@ -146,6 +193,9 @@ switch (cmd) {
     break;
   case 'status':
     cmdStatus();
+    break;
+  case 'retry':
+    cmdRetry();
     break;
   case 'list':
     cmdList();
