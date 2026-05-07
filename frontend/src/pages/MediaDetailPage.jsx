@@ -53,8 +53,8 @@ export default function MediaDetailPage() {
     setUploadingImage(true);
     try {
       const formData = new FormData();
-      formData.append('file', file);
       formData.append('type', imageType);
+      formData.append('file', file);
       const token = localStorage.getItem('token');
       const res = await fetch(`/api/media/${id}/image`, {
         method: 'POST',
@@ -76,10 +76,10 @@ export default function MediaDetailPage() {
     setUploadingSub(episodeId || 'movie');
     try {
       const formData = new FormData();
-      formData.append('file', file);
       formData.append('language', file.name.match(/\.([a-z]{2,3})\./)?.[1] || 'en');
       formData.append('label', file.name.match(/\.([a-z]{2,3})\./)?.[1]?.toUpperCase() || 'English');
       if (episodeId) formData.append('episodeId', episodeId);
+      formData.append('file', file);
       const token = localStorage.getItem('token');
       const res = await fetch(`/api/media/${id}/subtitles/upload`, {
         method: 'POST',
