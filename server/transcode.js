@@ -2,6 +2,7 @@ const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { getDb } = require('./db');
+const { probeAudioTracks, langFromCode } = require('./track-extractor');
 
 const jobs = new Map();
 const queue = [];
@@ -53,14 +54,43 @@ function getResolution(filePath) {
   }
 }
 
+function detectHardwareEncoder() {
+  try {
+    const encoders = execSync('ffmpeg -encoders 2>/dev/null', { encoding: 'utf-8', timeout: 5000 });
+    if (encoders.includes('h264_videotoolbox')) return 'h264_videotoolbox';
+    if (encoders.includes('h264_nvenc')) return 'h264_nvenc';
+    if (encoders.includes('h264_vaapi')) return 'h264_vaapi';
+    if (encoders.includes('h264_v4l2m2m') || encoders.includes('v4l2m2m')) {
+      try {
+        const codecs = execSync('ffmpeg -hide_banner -codecs 2>/dev/null', { encoding: 'utf-8', timeout: 3000 });
+        const hasV4l2H264 = codecs.includes('h264_v4l2m2m');
+        const v4l2Devs = execSync('ls /dev/video* 2>/dev/null || echo ""', { encoding: 'utf-8', timeout: 1000 }).trim();
+        if (hasV4l2H264 && v4l2Devs) return 'h264_v4l2m2m';
+      } catch {}
+    }
+    if (encoders.includes('h264_omx')) return 'h264_omx';
+  } catch {}
+  return 'libx264';
+}
+
+const HW_ENCODER = detectHardwareEncoder();
+console.log(`Transcode: using encoder ${HW_ENCODER}`);
+
 const ALL_RENDITIONS = [
-  { name: '480p',  width: 854,  height: 480,  videoBitrate: '800k',  maxrate: '856k',   bufsize: '1200k', audioBitrate: '96k' },
-  { name: '720p',  width: 1280, height: 720,  videoBitrate: '2500k', maxrate: '2675k',  bufsize: '4000k', audioBitrate: '128k' },
-  { name: '1080p', width: 1920, height: 1080, videoBitrate: '5000k', maxrate: '5350k',  bufsize: '8000k', audioBitrate: '192k' },
+  { name: '480p',  width: 854,  height: 480,  videoBitrate: '1200k', maxrate: '1600k', bufsize: '2400k' },
+  { name: '720p',  width: 1280, height: 720,  videoBitrate: '3000k', maxrate: '4000k', bufsize: '6000k' },
+  { name: '1080p', width: 1920, height: 1080, videoBitrate: '6000k', maxrate: '8000k', bufsize: '12000k' },
 ];
 
+const AUDIO_BITRATES = { stereo: '128k', surround: '192k' };
+
 function getRenditions(sourceHeight) {
-  return ALL_RENDITIONS.filter(r => sourceHeight >= r.height);
+  const candidates = ALL_RENDITIONS.filter(r => sourceHeight >= r.height);
+  if (HW_ENCODER === 'h264_v4l2m2m' || HW_ENCODER === 'h264_omx') {
+    const capped = Math.min(sourceHeight, 720);
+    return candidates.filter(r => r.height <= capped).slice(-1);
+  }
+  return candidates;
 }
 
 function needsTranscoding(filePath) {
@@ -75,7 +105,55 @@ function hasHLS(hlsDir) {
   return fs.existsSync(path.join(hlsDir, 'master.m3u8'));
 }
 
-function transcodeToHLS(inputPath, outputDir, onProgress) {
+function buildVideoEncoderArgs(encoder, streamIdx, bitrate, maxrate, bufsize) {
+  if (encoder === 'h264_videotoolbox') {
+    return [
+      `-c:v:${streamIdx}`, 'h264_videotoolbox',
+      `-b:v:${streamIdx}`, bitrate,
+      '-realtime', '1',
+      '-allow_sw', '1',
+    ];
+  }
+  if (encoder === 'h264_nvenc') {
+    return [
+      `-c:v:${streamIdx}`, 'h264_nvenc',
+      `-b:v:${streamIdx}`, bitrate,
+      `-maxrate:v:${streamIdx}`, maxrate,
+      `-bufsize:v:${streamIdx}`, bufsize,
+      '-preset', 'p1',
+      '-rc', 'vbr',
+      '-spatial-aq', '1',
+      '-temporal-aq', '1',
+    ];
+  }
+  if (encoder === 'h264_v4l2m2m') {
+    return [
+      `-c:v:${streamIdx}`, 'h264_v4l2m2m',
+      `-b:v:${streamIdx}`, bitrate,
+      '-pix_fmt', 'yuv420p',
+      '-num_capture_buffers', '64',
+    ];
+  }
+  if (encoder === 'h264_omx') {
+    return [
+      `-c:v:${streamIdx}`, 'h264_omx',
+      `-b:v:${streamIdx}`, bitrate,
+      '-profile:v', 'high',
+    ];
+  }
+  return [
+    `-c:v:${streamIdx}`, 'libx264',
+    `-b:v:${streamIdx}`, bitrate,
+    `-maxrate:v:${streamIdx}`, maxrate,
+    `-bufsize:v:${streamIdx}`, bufsize,
+    '-preset', 'veryfast',
+    '-crf', '23',
+    '-threads', '0',
+    '-tune', 'fastdecode',
+  ];
+}
+
+function transcodeToHLS(inputPath, outputDir, mediaId, episodeId, onProgress) {
   return new Promise((resolve, reject) => {
     fs.mkdirSync(outputDir, { recursive: true });
 
@@ -85,10 +163,13 @@ function transcodeToHLS(inputPath, outputDir, onProgress) {
     if (renditions.length === 0) {
       renditions.push({
         name: 'orig', width: sourceRes.width, height: sourceRes.height,
-        videoBitrate: '1500k', maxrate: '1605k', bufsize: '2400k', audioBitrate: '128k',
+        videoBitrate: '2000k', maxrate: '2500k', bufsize: '4000k',
       });
       renditions[0].origScale = true;
     }
+
+    const audioTracks = probeAudioTracks(inputPath);
+    const hasAudioTracks = audioTracks.length > 0;
 
     const filterParts = [];
     const mapParts = [];
@@ -103,16 +184,37 @@ function transcodeToHLS(inputPath, outputDir, onProgress) {
           `[v${i}]scale=w=${r.width}:h=${r.height}:force_original_aspect_ratio=decrease,pad=${r.width}:${r.height}:(ow-iw)/2:(oh-ih)/2[v${i}out]`
         );
       }
-      mapParts.push(`[v${i}out]`, `-c:v:${i}`, 'libx264',
-        `-b:v:${i}`, r.videoBitrate, `-maxrate:v:${i}`, r.maxrate, `-bufsize:v:${i}`, r.bufsize,
-        '-preset', 'fast', '-crf', '23');
-      mapParts.push('-map', 'a:0', `-c:a:${i}`, 'aac', `-b:a:${i}`, r.audioBitrate, '-ac', '2');
+      mapParts.push('-map', `[v${i}out]`);
+
+      const encArgs = buildVideoEncoderArgs(HW_ENCODER, i, r.videoBitrate, r.maxrate, r.bufsize);
+      mapParts.push(...encArgs);
+    }
+
+    const audioGroupId = 'aac';
+    for (let i = 0; i < audioTracks.length; i++) {
+      const track = audioTracks[i];
+      const channels = track.channels || 2;
+      const bitrate = channels > 2 ? AUDIO_BITRATES.surround : AUDIO_BITRATES.stereo;
+      mapParts.push('-map', `0:a:${i}`);
+      mapParts.push(`-c:a:${i}`, 'aac', `-b:a:${i}`, bitrate, '-ac', String(Math.min(channels, 6)));
     }
 
     const splitCount = renditions.length;
     const splitFilter = `[0:v]split=${splitCount}${renditions.map((_, i) => `[v${i}]`).join('')}`;
 
-    const varStreamMap = renditions.map((r, i) => `v:${i},a:${i},name:${r.name}`).join(' ');
+    const varStreamMapParts = [];
+    for (let i = 0; i < renditions.length; i++) {
+      varStreamMapParts.push(`v:${i},ag:${audioGroupId},name:${renditions[i].name}`);
+    }
+    for (let i = 0; i < audioTracks.length; i++) {
+      const track = audioTracks[i];
+      const lang = langFromCode(track.language);
+      const defFlag = i === 0 ? ',default:1' : '';
+      varStreamMapParts.push(
+        `a:${i},ag:${audioGroupId},language:${lang.code},name:audio_${lang.code}${defFlag}`
+      );
+    }
+    const varStreamMap = varStreamMapParts.join(' ');
 
     const args = [
       '-y',
@@ -123,12 +225,17 @@ function transcodeToHLS(inputPath, outputDir, onProgress) {
       '-hls_time', '6',
       '-hls_list_size', '0',
       '-hls_playlist_type', 'vod',
+      '-hls_flags', 'independent_segments',
       '-hls_segment_filename', path.join(outputDir, '%v', 'segment_%03d.ts'),
       '-var_stream_map', varStreamMap,
       '-master_pl_name', 'master.m3u8',
-      '-max_muxing_queue_size', '1024',
+      '-max_muxing_queue_size', '4096',
       path.join(outputDir, '%v', 'playlist.m3u8'),
     ];
+
+    if (hasAudioTracks) {
+      args.push('-map_metadata', '-1');
+    }
 
     const proc = spawn('ffmpeg', args);
 
@@ -145,6 +252,14 @@ function transcodeToHLS(inputPath, outputDir, onProgress) {
 
     proc.on('close', (code) => {
       if (code === 0) {
+        const masterPath = path.join(outputDir, 'master.m3u8');
+        if (fs.existsSync(masterPath)) {
+          try {
+            patchMasterPlaylist(masterPath, audioTracks);
+          } catch (e) {
+            console.error('Failed to patch master playlist:', e.message);
+          }
+        }
         resolve();
       } else {
         reject(new Error(`ffmpeg exited with code ${code}`));
@@ -153,6 +268,40 @@ function transcodeToHLS(inputPath, outputDir, onProgress) {
 
     proc.on('error', reject);
   });
+}
+
+function patchMasterPlaylist(masterPath, audioTracks) {
+  let content = fs.readFileSync(masterPath, 'utf-8');
+  const lines = content.split('\n');
+
+  if (audioTracks.length <= 1) return;
+
+  for (let i = 0; i < audioTracks.length; i++) {
+    const track = audioTracks[i];
+    const lang = langFromCode(track.language);
+    const isDefault = i === 0 ? 'YES' : 'NO';
+    const channels = track.channels || 2;
+    const name = track.channels > 2
+      ? `${lang.label} ${channels}.1`
+      : lang.label;
+
+    const audioMediaTag = [
+      '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aac",',
+      `LANGUAGE="${lang.code}",`,
+      `NAME="${name}",`,
+      `AUTOSELECT=YES,`,
+      `DEFAULT=${isDefault},`,
+      `CHANNELS="${channels}",`,
+      `URI="audio_${lang.code}/playlist.m3u8"`,
+    ].join('');
+
+    const insertIdx = lines.findIndex(l => l.startsWith('#EXT-X-STREAM-INF'));
+    if (insertIdx >= 0) {
+      lines.splice(insertIdx, 0, audioMediaTag);
+    }
+  }
+
+  fs.writeFileSync(masterPath, lines.join('\n'), 'utf-8');
 }
 
 function updateJobStatus(job, dbStatus) {
@@ -189,7 +338,7 @@ async function processMovie(job) {
   job.outputPath = path.join(hlsDir, 'master.m3u8');
   job.duration = getDuration(inputPath);
 
-  await transcodeToHLS(inputPath, hlsDir, (seconds) => {
+  await transcodeToHLS(inputPath, hlsDir, job.mediaId, null, (seconds) => {
     job.progress = job.duration > 0 ? Math.min(99, Math.round((seconds / job.duration) * 100)) : 0;
   });
 
@@ -215,7 +364,7 @@ async function processEpisode(job) {
   job.outputPath = path.join(hlsDir, 'master.m3u8');
   job.duration = getDuration(inputPath);
 
-  await transcodeToHLS(inputPath, hlsDir, (seconds) => {
+  await transcodeToHLS(inputPath, hlsDir, null, job.episodeId, (seconds) => {
     job.progress = job.duration > 0 ? Math.min(99, Math.round((seconds / job.duration) * 100)) : 0;
   });
 

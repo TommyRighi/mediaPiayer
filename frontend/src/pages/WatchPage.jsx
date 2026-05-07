@@ -50,6 +50,12 @@ export default function WatchPage() {
     return [];
   }, [episode, media, episodeId]);
 
+  const audioTracks = useMemo(() => {
+    if (episodeId && episode?.audio_tracks) return episode.audio_tracks;
+    if (!episodeId && media?.audio_tracks) return media.audio_tracks;
+    return [];
+  }, [episode, media, episodeId]);
+
   const nextEpisode = useMemo(() => {
     if (!media || !media.seasons || !episodeId) return null;
     const allEpisodes = Object.keys(media.seasons)
@@ -106,6 +112,7 @@ export default function WatchPage() {
       src={videoUrl}
       title={title}
       subtitles={subtitles}
+      audioTracks={audioTracks}
       onBack={() => navigate(-1)}
       initialTime={initialTime}
       onProgress={handleProgress}

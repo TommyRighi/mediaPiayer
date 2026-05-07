@@ -6,6 +6,7 @@ const { nanoid } = require('nanoid');
 const { SUBTITLE_EXTENSIONS, IMAGE_EXTENSIONS, detectSubtitleLang, MEDIA_DIR, MEDIA_DIRS, isWithinAnyDir, setMediaDirs } = require('../utils');
 const { needsTranscoding, enqueue } = require('../transcode');
 const { generateAllVariants } = require('../imageProcessor');
+const { extractAndStoreAll } = require('../track-extractor');
 
 function extractTitle(filename) {
   let name = path.basename(filename, path.extname(filename));
@@ -85,12 +86,18 @@ async function scanMediaFolder() {
             if (posterPath) { results.posters; generateAllVariants(posterPath, 'poster'); }
             if (backdropPath) generateAllVariants(backdropPath, 'backdrop');
 
+            extractAndStoreAll(filePath, id, null).catch(() => {});
+
             if (needsTranscoding(filePath)) {
               db.prepare('UPDATE media SET transcode_status = ? WHERE id = ?').run('pending', id);
               enqueue('movie', id);
             }
           } else {
             const media = db.prepare('SELECT poster_path, backdrop_path, transcode_status FROM media WHERE id = ?').get(existing.id);
+            const trackCount = db.prepare('SELECT COUNT(*) as c FROM audio_tracks WHERE media_id = ?').get(existing.id);
+            if (!trackCount || trackCount.c === 0) {
+              extractAndStoreAll(filePath, existing.id, null).catch(() => {});
+            }
             if (!media.poster_path || !media.backdrop_path) {
               const posterPath = media.poster_path || findPosterForVideo(filePath);
               const backdropPath = media.backdrop_path || findBackdropForVideo(filePath);
@@ -188,6 +195,8 @@ async function scanMediaFolder() {
               ).run(epId, seriesId, seasonNum, epNum, epTitle, epPath, stat.size);
               results.episodes++;
 
+              extractAndStoreAll(epPath, null, epId).catch(() => {});
+
               if (needsTranscoding(epPath)) {
                 db.prepare('UPDATE episodes SET transcode_status = ? WHERE id = ?').run('pending', epId);
                 enqueue('episode', epId);
@@ -201,6 +210,10 @@ async function scanMediaFolder() {
                 results.subtitles++;
               }
             } else {
+              const trackCount = db.prepare('SELECT COUNT(*) as c FROM audio_tracks WHERE episode_id = ?').get(existing.id);
+              if (!trackCount || trackCount.c === 0) {
+                extractAndStoreAll(epPath, null, existing.id).catch(() => {});
+              }
               const subs = findSubtitlesForVideo(epPath);
               for (const sub of subs) {
                 const existingSub = db.prepare('SELECT id FROM subtitles WHERE episode_id = ? AND file_path = ?').get(existing.id, sub.filePath);

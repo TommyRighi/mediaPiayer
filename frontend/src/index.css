@@ -143,6 +143,73 @@ video::-webkit-media-controls {
   background: rgba(255,255,255,0.2);
 }
 
+.vp-audio-selector {
+  position: absolute;
+  bottom: 56px;
+  right: 16px;
+  z-index: 20;
+}
+
+.vp-container:has(.vp-next-btn-overlay) .vp-audio-selector {
+  bottom: 104px;
+}
+
+.vp-audio-btn {
+  background: rgba(0,0,0,0.6);
+  border: none;
+  border-radius: 6px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+  transition: background 0.15s;
+}
+
+.vp-audio-btn:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.vp-audio-menu {
+  position: absolute;
+  bottom: 48px;
+  right: 0;
+  background: rgba(20,20,20,0.95);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 6px;
+  min-width: 180px;
+  max-height: 240px;
+  overflow-y: auto;
+  backdrop-filter: blur(8px);
+}
+
+.vp-audio-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.vp-audio-item:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+.vp-audio-item-active {
+  color: var(--jf-primary, #0284c7);
+}
+
 .plyr--full-ui input[type="range"] {
   color: var(--jf-primary);
 }

@@ -165,6 +165,9 @@ async function mediaRoutes(fastify) {
       media.subtitles = db.prepare(
         'SELECT id, label, language FROM subtitles WHERE media_id = ? AND episode_id IS NULL'
       ).all(media.id);
+      media.audio_tracks = db.prepare(
+        'SELECT id, track_index, codec, language, label, channels, default_flag FROM audio_tracks WHERE media_id = ? AND episode_id IS NULL ORDER BY track_index'
+      ).all(media.id);
     } else {
       const allEpIds = Object.values(media.seasons || {}).flatMap(s => s.map(e => e.id));
       if (allEpIds.length > 0) {
@@ -176,13 +179,23 @@ async function mediaRoutes(fastify) {
           if (!subMap[s.episode_id]) subMap[s.episode_id] = [];
           subMap[s.episode_id].push({ id: s.id, label: s.label, language: s.language });
         }
+        const epAudio = db.prepare(
+          `SELECT id, episode_id, track_index, codec, language, label, channels, default_flag FROM audio_tracks WHERE episode_id IN (${allEpIds.map(() => '?').join(',')}) ORDER BY track_index`
+        ).all(...allEpIds);
+        const audioMap = {};
+        for (const a of epAudio) {
+          if (!audioMap[a.episode_id]) audioMap[a.episode_id] = [];
+          audioMap[a.episode_id].push({ id: a.id, track_index: a.track_index, codec: a.codec, language: a.language, label: a.label, channels: a.channels, default_flag: a.default_flag });
+        }
         for (const season of Object.values(media.seasons)) {
           for (const ep of season) {
             ep.subtitles = subMap[ep.id] || [];
+            ep.audio_tracks = audioMap[ep.id] || [];
           }
         }
       }
       media.subtitles = [];
+      media.audio_tracks = [];
     }
 
     return { media };
@@ -263,6 +276,18 @@ async function mediaRoutes(fastify) {
       'Cache-Control': 'public, max-age=86400',
     });
     return content;
+  });
+
+  fastify.get('/api/media/:id/audio-tracks', { preHandler: authMiddleware }, async (request, reply) => {
+    const db = getDb();
+    const media = db.prepare('SELECT id FROM media WHERE id = ?').get(request.params.id);
+    if (!media) {
+      return reply.status(404).send({ error: 'Media not found' });
+    }
+    const tracks = db.prepare(
+      'SELECT id, track_index, codec, language, label, channels, default_flag FROM audio_tracks WHERE media_id = ? AND episode_id IS NULL ORDER BY track_index'
+    ).all(request.params.id);
+    return { audio_tracks: tracks };
   });
 
   fastify.patch('/api/media/:id', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {

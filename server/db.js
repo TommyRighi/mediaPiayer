@@ -104,6 +104,22 @@ function migrate() {
       file_path  TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS audio_tracks (
+      id              TEXT PRIMARY KEY,
+      media_id        TEXT REFERENCES media(id) ON DELETE CASCADE,
+      episode_id      TEXT REFERENCES episodes(id) ON DELETE CASCADE,
+      track_index     INTEGER NOT NULL,
+      codec           TEXT NOT NULL DEFAULT 'unknown',
+      language        TEXT NOT NULL DEFAULT 'und',
+      label           TEXT NOT NULL,
+      channels        INTEGER DEFAULT 0,
+      channel_layout  TEXT DEFAULT '',
+      bit_rate        INTEGER DEFAULT 0,
+      sample_rate     INTEGER DEFAULT 0,
+      title           TEXT,
+      default_flag    INTEGER DEFAULT 0
+    );
   `);
 
   const roleCol = db.prepare("PRAGMA table_info(users)").all().find(c => c.name === 'role');
@@ -125,6 +141,29 @@ function migrate() {
   const epTranscodeCol = db.prepare("PRAGMA table_info(episodes)").all().find(c => c.name === 'transcode_status');
   if (!epTranscodeCol) {
     db.exec(`ALTER TABLE episodes ADD COLUMN transcode_status TEXT`);
+  }
+
+  const audioTracksTable = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='audio_tracks'"
+  ).get();
+  if (!audioTracksTable) {
+    db.exec(`
+      CREATE TABLE audio_tracks (
+        id              TEXT PRIMARY KEY,
+        media_id        TEXT REFERENCES media(id) ON DELETE CASCADE,
+        episode_id      TEXT REFERENCES episodes(id) ON DELETE CASCADE,
+        track_index     INTEGER NOT NULL,
+        codec           TEXT NOT NULL DEFAULT 'unknown',
+        language        TEXT NOT NULL DEFAULT 'und',
+        label           TEXT NOT NULL,
+        channels        INTEGER DEFAULT 0,
+        channel_layout  TEXT DEFAULT '',
+        bit_rate        INTEGER DEFAULT 0,
+        sample_rate     INTEGER DEFAULT 0,
+        title           TEXT,
+        default_flag    INTEGER DEFAULT 0
+      )
+    `);
   }
 }
 

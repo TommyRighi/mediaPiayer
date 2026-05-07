@@ -75,7 +75,7 @@ async function seriesRoutes(fastify) {
     return streamHlsFile(request, reply, filePath);
   });
 
-  fastify.get('/api/episodes/:id/subtitles', { preHandler: authMiddleware }, async (request) => {
+  fastify.get('/api/episodes/:id/subtitles', { preHandler: authMiddleware }, async (request, reply) => {
     const db = getDb();
     const episode = db.prepare('SELECT id FROM episodes WHERE id = ?').get(request.params.id);
     if (!episode) {
@@ -85,6 +85,18 @@ async function seriesRoutes(fastify) {
       'SELECT id, label, language FROM subtitles WHERE episode_id = ?'
     ).all(request.params.id);
     return { subtitles };
+  });
+
+  fastify.get('/api/episodes/:id/audio-tracks', { preHandler: authMiddleware }, async (request, reply) => {
+    const db = getDb();
+    const episode = db.prepare('SELECT id FROM episodes WHERE id = ?').get(request.params.id);
+    if (!episode) {
+      return reply.status(404).send({ error: 'Episode not found' });
+    }
+    const tracks = db.prepare(
+      'SELECT id, track_index, codec, language, label, channels, default_flag FROM audio_tracks WHERE episode_id = ? ORDER BY track_index'
+    ).all(request.params.id);
+    return { audio_tracks: tracks };
   });
 }
 

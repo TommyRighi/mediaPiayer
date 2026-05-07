@@ -47,6 +47,8 @@ export const api = {
     backdropUrl: (id, size) => `${BASE}/media/${id}/backdrop?${size ? 'size=' + size + '&' : ''}token=${token()}`,
     subtitles: (id) => request('GET', `/media/${id}/subtitles`),
     episodeSubtitles: (id) => request('GET', `/episodes/${id}/subtitles`),
+    audioTracks: (id) => request('GET', `/media/${id}/audio-tracks`),
+    episodeAudioTracks: (id) => request('GET', `/episodes/${id}/audio-tracks`),
   },
   series: {
     episodes: (id) => request('GET', `/series/${id}/episodes`),

@@ -168,6 +168,12 @@ export default function MediaDetailPage() {
                         {media.subtitles.map(s => s.label).join(', ')}
                       </span>
                     )}
+                    {media.audio_tracks && media.audio_tracks.length > 0 && (
+                      <span className="uppercase text-xs px-2 py-0.5 rounded flex items-center gap-1" style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--jf-text-secondary)' }}>
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" /></svg>
+                        {media.audio_tracks.map(a => a.label).join(', ')}
+                      </span>
+                    )}
                   </div>
                   {media.description && <p className="mb-6 max-w-xl mx-auto md:mx-0" style={{ color: 'var(--jf-text-secondary)' }}>{media.description}</p>}
 
@@ -261,6 +267,12 @@ export default function MediaDetailPage() {
                               <span className="text-xs flex-shrink-0 flex items-center gap-0.5" style={{ color: 'var(--jf-text-muted)' }}>
                                 <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z" /></svg>
                                 {ep.subtitles.length}
+                              </span>
+                            )}
+                            {ep.audio_tracks && ep.audio_tracks.length > 0 && (
+                              <span className="text-xs flex-shrink-0 flex items-center gap-0.5" style={{ color: 'var(--jf-text-muted)' }}>
+                                <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" /></svg>
+                                {ep.audio_tracks.length}
                               </span>
                             )}
                           </div>
