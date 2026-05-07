@@ -302,3 +302,4 @@ async function adminRoutes(fastify) {
 }
 
 module.exports = adminRoutes;
+module.exports.scanMediaFolder = scanMediaFolder;
