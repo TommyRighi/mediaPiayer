@@ -227,9 +227,67 @@ async function scanMediaFolder() {
   return results;
 }
 
+function deleteImageVariants(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return;
+  try { fs.unlinkSync(filePath); } catch {}
+  const dir = path.dirname(filePath);
+  const ext = path.extname(filePath);
+  const base = path.basename(filePath, ext);
+  try {
+    const files = fs.readdirSync(dir);
+    for (const f of files) {
+      if (f.startsWith(base + '-sm') || f.startsWith(base + '-md')) {
+        try { fs.unlinkSync(path.join(dir, f)); } catch {}
+      }
+    }
+  } catch {}
+}
+
+async function cleanMissingMedia() {
+  const db = getDb();
+  const results = { movies: 0, episodes: 0, series: 0 };
+
+  const movies = db.prepare('SELECT id, file_path, poster_path, backdrop_path FROM media WHERE type = ?').all('movie');
+  for (const movie of movies) {
+    if (!movie.file_path || !fs.existsSync(movie.file_path)) {
+      deleteImageVariants(movie.poster_path);
+      deleteImageVariants(movie.backdrop_path);
+      db.prepare('DELETE FROM media WHERE id = ?').run(movie.id);
+      results.movies++;
+    }
+  }
+
+  const episodes = db.prepare('SELECT id, file_path FROM episodes').all();
+  for (const ep of episodes) {
+    if (!ep.file_path || !fs.existsSync(ep.file_path)) {
+      db.prepare('DELETE FROM episodes WHERE id = ?').run(ep.id);
+      results.episodes++;
+    }
+  }
+
+  const series = db.prepare(`
+    SELECT id, poster_path, backdrop_path FROM media
+    WHERE type = 'series'
+    AND id NOT IN (SELECT DISTINCT series_id FROM episodes)
+  `).all();
+  for (const s of series) {
+    deleteImageVariants(s.poster_path);
+    deleteImageVariants(s.backdrop_path);
+    db.prepare('DELETE FROM media WHERE id = ?').run(s.id);
+    results.series++;
+  }
+
+  return results;
+}
+
 async function adminRoutes(fastify) {
   fastify.post('/api/admin/scan', { preHandler: [authMiddleware, adminMiddleware] }, async () => {
     const results = await scanMediaFolder();
+    return { success: true, ...results };
+  });
+
+  fastify.post('/api/admin/clean', { preHandler: [authMiddleware, adminMiddleware] }, async () => {
+    const results = await cleanMissingMedia();
     return { success: true, ...results };
   });
 
@@ -308,3 +366,4 @@ async function adminRoutes(fastify) {
 
 module.exports = adminRoutes;
 module.exports.scanMediaFolder = scanMediaFolder;
+module.exports.cleanMissingMedia = cleanMissingMedia;

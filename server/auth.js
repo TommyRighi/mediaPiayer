@@ -57,10 +57,41 @@ async function optionalAuth(request) {
   } catch { /* ignore */ }
 }
 
+async function mediaAuth(request, reply) {
+  let token = null;
+
+  const header = request.headers.authorization;
+  if (header && header.startsWith('Bearer ')) {
+    token = header.slice(7);
+  }
+
+  if (!token && request.query.token) {
+    token = request.query.token;
+  }
+
+  if (!token) {
+    reply.status(401).send({ error: 'Missing or invalid token' });
+    return;
+  }
+
+  try {
+    const payload = verifyToken(token);
+    const db = getDb();
+    const user = db.prepare('SELECT id, email, display_name, avatar_url, role, created_at FROM users WHERE id = ?').get(payload.sub);
+    if (!user) {
+      reply.status(401).send({ error: 'User not found' });
+      return;
+    }
+    request.user = user;
+  } catch {
+    reply.status(401).send({ error: 'Invalid or expired token' });
+  }
+}
+
 async function adminMiddleware(request, reply) {
   if (!request.user || request.user.role !== 'admin') {
     return reply.status(403).send({ error: 'Admin access required' });
   }
 }
 
-module.exports = { createToken, verifyToken, hashPassword, comparePassword, authMiddleware, optionalAuth, adminMiddleware };
+module.exports = { createToken, verifyToken, hashPassword, comparePassword, authMiddleware, optionalAuth, mediaAuth, adminMiddleware };

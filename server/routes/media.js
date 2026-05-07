@@ -1,12 +1,12 @@
 const { getDb } = require('../db');
-const { authMiddleware, optionalAuth, adminMiddleware } = require('../auth');
+const { authMiddleware, mediaAuth, adminMiddleware } = require('../auth');
 const { isWithinDir, isWithinAnyDir, streamVideo, MEDIA_DIR, MEDIA_DIRS, getImageMimeType, getSubtitleMimeType, srtToVtt, IMAGE_SIZES } = require('../utils');
 const { generateVariant } = require('../imageProcessor');
 const path = require('path');
 const fs = require('fs');
 
 async function mediaRoutes(fastify) {
-  fastify.get('/api/media', { preHandler: optionalAuth }, async (request) => {
+  fastify.get('/api/media', { preHandler: authMiddleware }, async (request) => {
     const { type, genre, search } = request.query;
     const db = getDb();
 
@@ -51,7 +51,7 @@ async function mediaRoutes(fastify) {
     return { media };
   });
 
-  fastify.get('/api/media/:id/poster', { preHandler: optionalAuth }, async (request, reply) => {
+  fastify.get('/api/media/:id/poster', { preHandler: mediaAuth }, async (request, reply) => {
     const db = getDb();
     const media = db.prepare('SELECT poster_path FROM media WHERE id = ?').get(request.params.id);
     if (!media || !media.poster_path) {
@@ -80,7 +80,7 @@ async function mediaRoutes(fastify) {
     return fs.createReadStream(filePath);
   });
 
-  fastify.get('/api/media/:id/backdrop', { preHandler: optionalAuth }, async (request, reply) => {
+  fastify.get('/api/media/:id/backdrop', { preHandler: mediaAuth }, async (request, reply) => {
     const db = getDb();
     const media = db.prepare('SELECT backdrop_path FROM media WHERE id = ?').get(request.params.id);
     if (!media || !media.backdrop_path) {
@@ -109,7 +109,7 @@ async function mediaRoutes(fastify) {
     return fs.createReadStream(filePath);
   });
 
-  fastify.get('/api/media/:id', { preHandler: optionalAuth }, async (request, reply) => {
+  fastify.get('/api/media/:id', { preHandler: authMiddleware }, async (request, reply) => {
     const db = getDb();
     const media = db.prepare('SELECT * FROM media WHERE id = ?').get(request.params.id);
     if (!media) {
@@ -181,7 +181,7 @@ async function mediaRoutes(fastify) {
     return { media };
   });
 
-  fastify.get('/api/media/:id/video', { preHandler: optionalAuth }, async (request, reply) => {
+  fastify.get('/api/media/:id/video', { preHandler: mediaAuth }, async (request, reply) => {
     const db = getDb();
     const media = db.prepare('SELECT * FROM media WHERE id = ?').get(request.params.id);
     if (!media || media.type !== 'movie' || !media.file_path) {
@@ -195,7 +195,7 @@ async function mediaRoutes(fastify) {
     return streamVideo(request, reply, media.file_path);
   });
 
-  fastify.get('/api/media/:id/subtitles', { preHandler: optionalAuth }, async (request) => {
+  fastify.get('/api/media/:id/subtitles', { preHandler: authMiddleware }, async (request) => {
     const db = getDb();
     const media = db.prepare('SELECT id FROM media WHERE id = ?').get(request.params.id);
     if (!media) {
@@ -207,7 +207,7 @@ async function mediaRoutes(fastify) {
     return { subtitles };
   });
 
-  fastify.get('/api/subtitles/:id', { preHandler: optionalAuth }, async (request, reply) => {
+  fastify.get('/api/subtitles/:id', { preHandler: mediaAuth }, async (request, reply) => {
     const db = getDb();
     const sub = db.prepare('SELECT * FROM subtitles WHERE id = ?').get(request.params.id);
     if (!sub) {

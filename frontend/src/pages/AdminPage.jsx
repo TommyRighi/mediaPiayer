@@ -30,6 +30,20 @@ export default function AdminPage() {
     setScanning(false);
   }
 
+  async function handleClean() {
+    setScanning(true);
+    setScanResult(null);
+    try {
+      const result = await api.admin.clean();
+      setScanResult(result);
+      const data = await api.media.list();
+      setMedia(data.media);
+    } catch (err) {
+      setScanResult({ error: err.message });
+    }
+    setScanning(false);
+  }
+
   async function handleAddStorage() {
     if (!newDir.trim()) return;
     setStorageMsg(null);
@@ -183,18 +197,29 @@ export default function AdminPage() {
             Scan all configured storage directories for new media files.
           </p>
 
-          <button
-            onClick={handleScan}
-            disabled={scanning}
-            className="jf-btn-primary"
-          >
-            {scanning ? 'Scanning...' : 'Scan for new media'}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={handleScan}
+              disabled={scanning}
+              className="jf-btn-primary"
+            >
+              {scanning ? 'Scanning...' : 'Scan for new media'}
+            </button>
+
+            <button
+              onClick={handleClean}
+              disabled={scanning}
+              className="px-4 py-2 rounded bg-red-600/20 border border-red-700 text-red-400 hover:bg-red-600/30 text-sm disabled:opacity-50"
+            >
+              {scanning ? 'Cleaning...' : 'Clean up missing files'}
+            </button>
+          </div>
 
           {scanResult && !scanResult.error && (
             <div className="mt-4 text-sm" style={{ color: 'var(--jf-primary)' }}>
-              Found: {scanResult.movies} movies, {scanResult.series} series ({scanResult.episodes} episodes)
+              {scanResult.movies != null && <>Found: {scanResult.movies} movies, {scanResult.series} series ({scanResult.episodes} episodes)</>}
               {scanResult.converted > 0 && ` · ${scanResult.converted} queued for conversion`}
+              {scanResult.removedMovies != null && <>Removed: {scanResult.movies} movies, {scanResult.series} series ({scanResult.episodes} episodes)</>}
             </div>
           )}
           {scanResult?.error && (

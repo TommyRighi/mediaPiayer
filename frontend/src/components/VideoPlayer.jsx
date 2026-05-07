@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import Plyr from 'plyr';
 import 'plyr/css';
+import { getToken } from '../api';
 
 export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode, nextEpisodeLabel, onBack, initialTime = 0, onProgress }) {
   const containerRef = useRef(null);
@@ -71,7 +72,7 @@ export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode,
       el.kind = 'subtitles';
       el.label = sub.label;
       el.srclang = sub.language;
-      el.src = `/api/subtitles/${sub.id}`;
+      el.src = `/api/subtitles/${sub.id}?token=${getToken()}`;
       v.appendChild(el);
     }
 

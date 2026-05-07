@@ -1,11 +1,9 @@
 const { getDb } = require('../db');
-const { optionalAuth } = require('../auth');
-const { streamVideo, MEDIA_DIR, isWithinDir, srtToVtt } = require('../utils');
-const path = require('path');
-const fs = require('fs');
+const { authMiddleware, mediaAuth } = require('../auth');
+const { streamVideo } = require('../utils');
 
 async function seriesRoutes(fastify) {
-  fastify.get('/api/series/:id/episodes', { preHandler: optionalAuth }, async (request, reply) => {
+  fastify.get('/api/series/:id/episodes', { preHandler: authMiddleware }, async (request, reply) => {
     const db = getDb();
     const series = db.prepare('SELECT * FROM media WHERE id = ? AND type = ?').get(request.params.id, 'series');
     if (!series) {
@@ -42,7 +40,7 @@ async function seriesRoutes(fastify) {
     return { series, seasons };
   });
 
-  fastify.get('/api/episodes/:id/video', { preHandler: optionalAuth }, async (request, reply) => {
+  fastify.get('/api/episodes/:id/video', { preHandler: mediaAuth }, async (request, reply) => {
     const db = getDb();
     const episode = db.prepare('SELECT * FROM episodes WHERE id = ?').get(request.params.id);
     if (!episode || !episode.file_path) {
@@ -56,7 +54,7 @@ async function seriesRoutes(fastify) {
     return streamVideo(request, reply, episode.file_path);
   });
 
-  fastify.get('/api/episodes/:id/subtitles', { preHandler: optionalAuth }, async (request) => {
+  fastify.get('/api/episodes/:id/subtitles', { preHandler: authMiddleware }, async (request) => {
     const db = getDb();
     const episode = db.prepare('SELECT id FROM episodes WHERE id = ?').get(request.params.id);
     if (!episode) {
