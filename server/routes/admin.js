@@ -5,6 +5,7 @@ const fs = require('fs');
 const { nanoid } = require('nanoid');
 const { SUBTITLE_EXTENSIONS, IMAGE_EXTENSIONS, detectSubtitleLang, MEDIA_DIR, MEDIA_DIRS, isWithinAnyDir, setMediaDirs } = require('../utils');
 const { needsTranscoding, enqueue } = require('../transcode');
+const { generateAllVariants } = require('../imageProcessor');
 
 function extractTitle(filename) {
   let name = path.basename(filename, path.extname(filename));
@@ -81,7 +82,8 @@ async function scanMediaFolder() {
             db.prepare(
               `INSERT INTO media (id, title, type, file_path, file_size, poster_path, backdrop_path) VALUES (?, ?, 'movie', ?, ?, ?, ?)`
             ).run(id, title, filePath, stat.size, posterPath, backdropPath);
-            if (posterPath) results.posters;
+            if (posterPath) { results.posters; generateAllVariants(posterPath, 'poster'); }
+            if (backdropPath) generateAllVariants(backdropPath, 'backdrop');
 
             if (needsTranscoding(filePath)) {
               db.prepare('UPDATE media SET transcode_status = ? WHERE id = ?').run('pending', id);
@@ -95,7 +97,8 @@ async function scanMediaFolder() {
               if (posterPath !== media.poster_path || backdropPath !== media.backdrop_path) {
                 db.prepare('UPDATE media SET poster_path = ?, backdrop_path = ? WHERE id = ?')
                   .run(posterPath, backdropPath, existing.id);
-                if (posterPath && !media.poster_path) results.posters++;
+                if (posterPath && !media.poster_path) { results.posters++; generateAllVariants(posterPath, 'poster'); }
+                if (backdropPath && !media.backdrop_path) generateAllVariants(backdropPath, 'backdrop');
               }
             }
             if (!media.transcode_status && needsTranscoding(filePath)) {
@@ -146,7 +149,8 @@ async function scanMediaFolder() {
             if (posterPath !== existing.poster_path || backdropPath !== existing.backdrop_path) {
               db.prepare('UPDATE media SET poster_path = ?, backdrop_path = ? WHERE id = ?')
                 .run(posterPath, backdropPath, seriesId);
-              if (posterPath && !existing.poster_path) results.posters++;
+              if (posterPath && !existing.poster_path) { results.posters++; generateAllVariants(posterPath, 'poster'); }
+              if (backdropPath && !existing.backdrop_path) generateAllVariants(backdropPath, 'backdrop');
             }
           }
         } else {
@@ -157,7 +161,8 @@ async function scanMediaFolder() {
             `INSERT INTO media (id, title, type, genre, poster_path, backdrop_path) VALUES (?, ?, 'series', '', ?, ?)`
           ).run(seriesId, showName, posterPath, backdropPath);
           results.series++;
-          if (posterPath) results.posters++;
+          if (posterPath) { results.posters++; generateAllVariants(posterPath, 'poster'); }
+          if (backdropPath) generateAllVariants(backdropPath, 'backdrop');
         }
 
         for (const seasonFolder of seasonFolders) {

@@ -1,6 +1,7 @@
 const { getDb } = require('../db');
 const { authMiddleware, optionalAuth, adminMiddleware } = require('../auth');
-const { isWithinDir, isWithinAnyDir, streamVideo, MEDIA_DIR, MEDIA_DIRS, getImageMimeType, getSubtitleMimeType, srtToVtt } = require('../utils');
+const { isWithinDir, isWithinAnyDir, streamVideo, MEDIA_DIR, MEDIA_DIRS, getImageMimeType, getSubtitleMimeType, srtToVtt, IMAGE_SIZES } = require('../utils');
+const { generateVariant } = require('../imageProcessor');
 const path = require('path');
 const fs = require('fs');
 
@@ -57,7 +58,14 @@ async function mediaRoutes(fastify) {
       return reply.status(404).send({ error: 'Poster not found' });
     }
 
-    const filePath = media.poster_path;
+    const size = request.query.size || 'original';
+    let filePath = media.poster_path;
+
+    if (size !== 'original') {
+      const variant = await generateVariant(filePath, size, 'poster');
+      if (variant) filePath = variant;
+    }
+
     if (!isWithinAnyDir(filePath, MEDIA_DIRS)) {
       return reply.status(403).send({ error: 'Invalid file path' });
     }
@@ -79,7 +87,14 @@ async function mediaRoutes(fastify) {
       return reply.status(404).send({ error: 'Backdrop not found' });
     }
 
-    const filePath = media.backdrop_path;
+    const size = request.query.size || 'original';
+    let filePath = media.backdrop_path;
+
+    if (size !== 'original') {
+      const variant = await generateVariant(filePath, size, 'backdrop');
+      if (variant) filePath = variant;
+    }
+
     if (!isWithinAnyDir(filePath, MEDIA_DIRS)) {
       return reply.status(403).send({ error: 'Invalid file path' });
     }
@@ -282,6 +297,7 @@ async function mediaRoutes(fastify) {
       fs.unlinkSync(media.backdrop_path);
     }
 
+    db.prepare('DELETE FROM watch_parties WHERE media_id = ? OR episode_id IN (SELECT id FROM episodes WHERE series_id = ?)').run(request.params.id, request.params.id);
     db.prepare('DELETE FROM media WHERE id = ?').run(request.params.id);
     return { success: true };
   });

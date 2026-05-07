@@ -105,7 +105,7 @@ export default function MediaDetailPage() {
 
   return (
     <div style={{ marginTop: 'calc(var(--jf-topbar-height) * -1)' }}>
-      <div className="jf-backdrop" style={media.backdrop_path ? { backgroundImage: `url(${api.media.backdropUrl(media.id)})` } : { background: 'linear-gradient(to bottom right, #292929, #101010)' }}>
+      <div className="jf-backdrop" style={media.backdrop_path ? { backgroundImage: `url(${api.media.backdropUrl(media.id, 'md')})` } : { background: 'linear-gradient(to bottom right, #292929, #101010)' }}>
         <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--jf-bg) 0%, transparent 60%)' }} />
       </div>
 
@@ -115,7 +115,7 @@ export default function MediaDetailPage() {
             <div className="jf-detail-poster mx-auto md:mx-0">
               <div style={{ background: 'var(--jf-surface)' }}>
                 {media.poster_path ? (
-                  <img src={api.media.posterUrl(media.id)} alt={media.title} className="w-full h-full object-cover" />
+                  <img src={api.media.posterUrl(media.id, 'md')} alt={media.title} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-4xl md:text-6xl" style={{ color: 'var(--jf-text-muted)' }}>
                     {media.title.charAt(0)}

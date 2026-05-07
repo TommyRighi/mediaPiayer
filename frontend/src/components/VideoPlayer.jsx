@@ -116,6 +116,7 @@ export default function VideoPlayer({ src, title, subtitles = [], onNextEpisode,
         ref={videoRef}
         src={src}
         playsInline
+        preload="auto"
         crossOrigin="anonymous"
       />
       {onBack && (

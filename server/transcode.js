@@ -237,13 +237,19 @@ function getStatus(mediaId, episodeId) {
 function resumePendingJobs() {
   const db = getDb();
 
-  const pendingMovies = db.prepare('SELECT id FROM media WHERE transcode_status = ? AND type = ?').all('pending', 'movie');
-  for (const m of pendingMovies) {
+  const stuckMovies = db.prepare(
+    "SELECT id FROM media WHERE transcode_status IN ('pending', 'converting') AND type = 'movie'"
+  ).all();
+  for (const m of stuckMovies) {
+    db.prepare("UPDATE media SET transcode_status = 'pending' WHERE id = ?").run(m.id);
     enqueue('movie', m.id);
   }
 
-  const pendingEpisodes = db.prepare('SELECT id FROM episodes WHERE transcode_status = ?').all('pending');
-  for (const e of pendingEpisodes) {
+  const stuckEps = db.prepare(
+    "SELECT id FROM episodes WHERE transcode_status IN ('pending', 'converting')"
+  ).all();
+  for (const e of stuckEps) {
+    db.prepare("UPDATE episodes SET transcode_status = 'pending' WHERE id = ?").run(e.id);
     enqueue('episode', e.id);
   }
 }

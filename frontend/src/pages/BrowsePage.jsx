@@ -114,7 +114,7 @@ export default function BrowsePage() {
   return (
     <div>
       {featured && !typeFilter && !searchQuery && (
-        <div className="jf-backdrop" style={featured.backdrop_path ? { backgroundImage: `url(${api.media.backdropUrl(featured.id)})` } : { background: 'linear-gradient(to bottom right, var(--jf-surface-elevated), var(--jf-bg))' }}>
+        <div className="jf-backdrop" style={featured.backdrop_path ? { backgroundImage: `url(${api.media.backdropUrl(featured.id, 'md')})` } : { background: 'linear-gradient(to bottom right, var(--jf-surface-elevated), var(--jf-bg))' }}>
           <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--jf-bg) 0%, rgba(20,20,20,0.6) 40%, transparent 100%)' }} />
           <div className="absolute inset-0 flex items-end pb-12 md:pb-20 px-4 md:px-8">
             <div className="max-w-lg">

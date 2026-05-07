@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { needsTranscoding, enqueue } = require('../transcode');
 const { MEDIA_DIR, pickBestMediaDir } = require('../utils');
+const { generateAllVariants } = require('../imageProcessor');
 
 const ALLOWED_EXTENSIONS = ['.mp4', '.mkv', '.webm', '.mov', '.avi'];
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
@@ -179,6 +180,8 @@ async function uploadRoutes(fastify) {
 
     const column = imageType === 'poster' ? 'poster_path' : 'backdrop_path';
     db.prepare(`UPDATE media SET ${column} = ? WHERE id = ?`).run(filePath, media.id);
+
+    generateAllVariants(filePath, imageType);
 
     return { media: db.prepare('SELECT * FROM media WHERE id = ?').get(media.id) };
   });

@@ -34,7 +34,16 @@ const fastify = Fastify({
 });
 
 async function start() {
-  await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
+  await fastify.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
+    allowList: (request) => {
+      const url = request.url;
+      return url.includes('/video') || url.includes('/poster') ||
+             url.includes('/backdrop') || url.includes('/subtitles') ||
+             url.startsWith('/assets/');
+    },
+  });
   const corsOrigin = process.env.NODE_ENV === 'production'
     ? (process.env.CORS_ORIGIN || false)
     : true;

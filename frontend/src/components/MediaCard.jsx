@@ -22,9 +22,9 @@ export default function MediaCard({ media, progress, variant = 'portrait' }) {
       <Link to={linkTo} className="flex-shrink-0 group relative overflow-hidden" style={{ width: '72vw', maxWidth: '350px' }}>
         <div className="relative" style={{ paddingBottom: '56.25%' }}>
           {hasBackdrop ? (
-            <img src={api.media.backdropUrl(media.id)} alt={media.title} className="absolute inset-0 w-full h-full object-cover" style={{ borderRadius: '0.3em' }} loading="lazy" />
+            <img src={api.media.backdropUrl(media.id, 'sm')} alt={media.title} className="absolute inset-0 w-full h-full object-cover" style={{ borderRadius: '0.3em' }} loading="lazy" />
           ) : hasPoster ? (
-            <img src={api.media.posterUrl(media.id)} alt={media.title} className="absolute inset-0 w-full h-full object-cover" style={{ borderRadius: '0.3em' }} loading="lazy" />
+            <img src={api.media.posterUrl(media.id, 'sm')} alt={media.title} className="absolute inset-0 w-full h-full object-cover" style={{ borderRadius: '0.3em' }} loading="lazy" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--jf-surface)', borderRadius: '0.3em' }}>
               <span className="text-2xl" style={{ color: 'var(--jf-text-muted)' }}>{media.title.charAt(0)}</span>
@@ -60,7 +60,7 @@ export default function MediaCard({ media, progress, variant = 'portrait' }) {
     <Link to={linkTo} className="flex-shrink-0 group relative overflow-hidden" style={{ width: '30vw', maxWidth: '180px' }}>
       <div className="relative" style={{ paddingBottom: '150%' }}>
         {hasPoster ? (
-          <img src={api.media.posterUrl(media.id)} alt={media.title} className="absolute inset-0 w-full h-full object-cover" style={{ borderRadius: '0.3em' }} loading="lazy" />
+          <img src={api.media.posterUrl(media.id, 'sm')} alt={media.title} className="absolute inset-0 w-full h-full object-cover" style={{ borderRadius: '0.3em' }} loading="lazy" />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--jf-surface-elevated, #292929)', borderRadius: '0.3em' }}>
             <span className="text-3xl" style={{ color: 'var(--jf-text-muted)' }}>{media.title.charAt(0)}</span>

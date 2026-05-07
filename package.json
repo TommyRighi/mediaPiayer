@@ -27,7 +27,8 @@
     "dotenv": "^17.4.2",
     "fastify": "^4.26.0",
     "jsonwebtoken": "^9.0.3",
-    "nanoid": "^5.0.5"
+    "nanoid": "^5.0.5",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.10",

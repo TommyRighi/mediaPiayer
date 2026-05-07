@@ -154,6 +154,7 @@ export default function PartyRoom() {
                 ref={videoRef}
                 src={videoUrl}
                 playsInline
+                preload="auto"
                 crossOrigin="anonymous"
                 onPlay={handlePlay}
                 onPause={handlePause}

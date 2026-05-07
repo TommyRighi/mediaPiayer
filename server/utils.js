@@ -35,7 +35,16 @@ async function streamVideo(request, reply, filePath) {
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
   const contentType = getVideoMimeType(filePath);
+  const etag = `"${stat.size}-${stat.mtimeMs}"`;
   const range = request.headers.range;
+
+  const cacheHeaders = {
+    'Accept-Ranges': 'bytes',
+    'Content-Type': contentType,
+    'Cache-Control': 'public, max-age=3600',
+    'ETag': etag,
+    'Last-Modified': stat.mtime.toUTCString(),
+  };
 
   if (range) {
     const parts = range.replace(/bytes=/, '').split('-');
@@ -47,22 +56,20 @@ async function streamVideo(request, reply, filePath) {
     const chunkSize = end - start + 1;
 
     reply.status(206).headers({
+      ...cacheHeaders,
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-      'Accept-Ranges': 'bytes',
       'Content-Length': chunkSize,
-      'Content-Type': contentType,
     });
 
-    return fs.createReadStream(filePath, { start, end });
+    return fs.createReadStream(filePath, { start, end, highWaterMark: 1024 * 1024 });
   }
 
   reply.headers({
+    ...cacheHeaders,
     'Content-Length': fileSize,
-    'Content-Type': contentType,
-    'Accept-Ranges': 'bytes',
   });
 
-  return fs.createReadStream(filePath);
+  return fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 });
 }
 
 const SUBTITLE_EXTENSIONS = ['.srt', '.vtt'];
@@ -194,10 +201,13 @@ function setMediaDirs(dirs) {
   process.env.MEDIA_DIRS = dirs.join(',');
 }
 
+const { IMAGE_SIZES } = require('./imageProcessor');
+
 module.exports = {
   isWithinDir, isWithinAnyDir, getVideoMimeType, streamVideo, MEDIA_DIR, MEDIA_DIRS,
   getDiskFree, pickBestMediaDir, setMediaDirs,
   SUBTITLE_EXTENSIONS, IMAGE_EXTENSIONS,
   getSubtitleMimeType, getImageMimeType, srtToVtt,
   detectSubtitleLang, LANG_MAP,
+  IMAGE_SIZES,
 };
