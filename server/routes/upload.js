@@ -3,13 +3,13 @@ const { authMiddleware, adminMiddleware } = require('../auth');
 const { nanoid } = require('nanoid');
 const path = require('path');
 const fs = require('fs');
+const sharp = require('sharp');
 const { needsTranscoding, enqueue } = require('../transcode');
-const { MEDIA_DIR, pickBestMediaDir } = require('../utils');
+const { MEDIA_DIR, MEDIA_DIRS, pickBestMediaDir, isWithinAnyDir } = require('../utils');
 const { generateAllVariants } = require('../imageProcessor');
 const { extractAndStoreAll } = require('../track-extractor');
 
 const ALLOWED_EXTENSIONS = ['.mp4', '.mkv', '.webm', '.mov', '.avi'];
-const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
 
 function estimateFileSize(request) {
   const contentLength = request.headers['content-length'];
@@ -18,6 +18,24 @@ function estimateFileSize(request) {
     if (!isNaN(parsed) && parsed > 0) return parsed;
   }
   return null;
+}
+
+function removeImageWithVariants(filePath) {
+  if (!filePath || !isWithinAnyDir(filePath, MEDIA_DIRS)) return;
+  if (fs.existsSync(filePath)) {
+    try { fs.unlinkSync(filePath); } catch {}
+  }
+  const dir = path.dirname(filePath);
+  const ext = path.extname(filePath);
+  const base = path.basename(filePath, ext);
+  try {
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+      if (file.startsWith(`${base}-sm`) || file.startsWith(`${base}-md`)) {
+        try { fs.unlinkSync(path.join(dir, file)); } catch {}
+      }
+    }
+  } catch {}
 }
 
 async function uploadRoutes(fastify) {
@@ -181,9 +199,8 @@ async function uploadRoutes(fastify) {
       return reply.status(400).send({ error: 'type must be poster or backdrop' });
     }
 
-    const ext = path.extname(fileData.filename) || '.jpg';
-    if (!IMAGE_EXTENSIONS.includes(ext.toLowerCase())) {
-      return reply.status(400).send({ error: `File type ${ext} not allowed for images. Allowed: ${IMAGE_EXTENSIONS.join(', ')}` });
+    if (!fileData.mimetype || !fileData.mimetype.toLowerCase().startsWith('image/')) {
+      return reply.status(400).send({ error: 'Uploaded file must be an image' });
     }
 
     const estimated = estimateFileSize(request);
@@ -191,19 +208,40 @@ async function uploadRoutes(fastify) {
       ? pickBestMediaDir(estimated, 'posters')
       : MEDIA_DIR;
     const fileDir = path.join(baseDir, 'posters');
-    const fileName = `${media.id}-${imageType}${ext}`;
-    const filePath = path.join(fileDir, fileName);
+    fs.mkdirSync(fileDir, { recursive: true });
 
-    const writeStream = fs.createWriteStream(filePath);
+    const tempPath = path.join(fileDir, `${media.id}-${imageType}-upload-${Date.now()}`);
+    const tempWriteStream = fs.createWriteStream(tempPath);
     await new Promise((resolve, reject) => {
-      writeStream.on('error', reject);
+      tempWriteStream.on('error', reject);
       fileData.file.on('end', resolve);
       fileData.file.on('error', reject);
-      fileData.file.pipe(writeStream);
+      fileData.file.pipe(tempWriteStream);
     });
 
+    let filePath = path.join(fileDir, `${media.id}-${imageType}.webp`);
+    try {
+      if (fileData.mimetype.toLowerCase() === 'image/gif') {
+        filePath = path.join(fileDir, `${media.id}-${imageType}.gif`);
+        fs.renameSync(tempPath, filePath);
+      } else {
+        await sharp(tempPath)
+          .rotate()
+          .webp({ quality: 85 })
+          .toFile(filePath);
+        fs.unlinkSync(tempPath);
+      }
+    } catch (err) {
+      try { fs.unlinkSync(tempPath); } catch {}
+      return reply.status(400).send({ error: 'Invalid or unsupported image format' });
+    }
+
     const column = imageType === 'poster' ? 'poster_path' : 'backdrop_path';
+    const previousPath = imageType === 'poster' ? media.poster_path : media.backdrop_path;
     db.prepare(`UPDATE media SET ${column} = ? WHERE id = ?`).run(filePath, media.id);
+    if (previousPath && previousPath !== filePath) {
+      removeImageWithVariants(previousPath);
+    }
 
     generateAllVariants(filePath, imageType);
 
