@@ -38,6 +38,22 @@ function removeImageWithVariants(filePath) {
   } catch {}
 }
 
+function writePartToPath(filePart, filePath) {
+  return new Promise((resolve, reject) => {
+    const writeStream = fs.createWriteStream(filePath);
+    let size = 0;
+
+    filePart.file.on('data', (chunk) => {
+      size += chunk.length;
+    });
+    filePart.file.on('error', reject);
+    writeStream.on('error', reject);
+    writeStream.on('finish', () => resolve(size));
+
+    filePart.file.pipe(writeStream);
+  });
+}
+
 async function uploadRoutes(fastify) {
   fastify.post('/api/upload', { preHandler: [authMiddleware, adminMiddleware], bodyLimit: 5 * 1024 * 1024 * 1024 }, async (request, reply) => {
     const fields = {};
@@ -103,17 +119,7 @@ async function uploadRoutes(fastify) {
     }
 
     fs.mkdirSync(fileDir, { recursive: true });
-    const writeStream = fs.createWriteStream(filePath);
-    const fileSize = await new Promise((resolve, reject) => {
-      let size = 0;
-      fileData.file.on('data', (chunk) => {
-        size += chunk.length;
-      });
-      fileData.file.on('end', () => resolve(size));
-      fileData.file.on('error', reject);
-      writeStream.on('error', reject);
-      fileData.file.pipe(writeStream);
-    });
+    const fileSize = await writePartToPath(fileData, filePath);
 
     function cleanup() {
       try { fs.unlinkSync(filePath); } catch {}
@@ -211,13 +217,7 @@ async function uploadRoutes(fastify) {
     fs.mkdirSync(fileDir, { recursive: true });
 
     const tempPath = path.join(fileDir, `${media.id}-${imageType}-upload-${Date.now()}`);
-    const tempWriteStream = fs.createWriteStream(tempPath);
-    await new Promise((resolve, reject) => {
-      tempWriteStream.on('error', reject);
-      fileData.file.on('end', resolve);
-      fileData.file.on('error', reject);
-      fileData.file.pipe(tempWriteStream);
-    });
+    await writePartToPath(fileData, tempPath);
 
     let filePath = path.join(fileDir, `${media.id}-${imageType}.webp`);
     try {
@@ -288,13 +288,7 @@ async function uploadRoutes(fastify) {
     const fileName = `${subId}${ext}`;
     const filePath = path.join(fileDir, fileName);
 
-    const writeStream = fs.createWriteStream(filePath);
-    await new Promise((resolve, reject) => {
-      writeStream.on('error', reject);
-      fileData.file.on('end', resolve);
-      fileData.file.on('error', reject);
-      fileData.file.pipe(writeStream);
-    });
+    await writePartToPath(fileData, filePath);
 
     db.prepare(
       'INSERT INTO subtitles (id, media_id, episode_id, label, language, file_path) VALUES (?, ?, ?, ?, ?, ?)'

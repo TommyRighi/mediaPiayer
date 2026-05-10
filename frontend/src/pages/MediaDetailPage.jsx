@@ -10,7 +10,9 @@ export default function MediaDetailPage() {
   const [media, setMedia] = useState(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingImageType, setUploadingImageType] = useState(null);
+  const [imageUploadProgress, setImageUploadProgress] = useState(0);
+  const [imageVersion, setImageVersion] = useState(0);
   const [uploadingSub, setUploadingSub] = useState(null);
 
   useEffect(() => {
@@ -50,24 +52,50 @@ export default function MediaDetailPage() {
   async function handleImageUpload(e, imageType) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploadingImage(true);
+    setUploadingImageType(imageType);
+    setImageUploadProgress(0);
     try {
       const formData = new FormData();
       formData.append('type', imageType);
       formData.append('file', file);
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/media/${id}/image`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+      const data = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `/api/media/${id}/image`);
+
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable) {
+            setImageUploadProgress(Math.round((ev.loaded / ev.total) * 100));
+          }
+        };
+
+        xhr.onload = () => {
+          let parsed;
+          try {
+            parsed = JSON.parse(xhr.responseText);
+          } catch {
+            parsed = {};
+          }
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(parsed);
+            return;
+          }
+          reject(new Error(parsed.error || 'Upload failed'));
+        };
+
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.send(formData);
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
       setMedia(data.media);
+      setImageVersion((v) => v + 1);
     } catch (err) {
       alert(err.message);
     }
-    setUploadingImage(false);
+    setUploadingImageType(null);
+    setImageUploadProgress(0);
+    e.target.value = '';
   }
 
   async function handleSubtitleUpload(e, episodeId) {
@@ -105,7 +133,7 @@ export default function MediaDetailPage() {
 
   return (
     <div style={{ marginTop: 'calc(var(--jf-topbar-height) * -1)' }}>
-      <div className="jf-backdrop" style={media.backdrop_path ? { backgroundImage: `url(${api.media.backdropUrl(media.id, 'md')})` } : { background: 'linear-gradient(to bottom right, #292929, #101010)' }}>
+      <div className="jf-backdrop" style={media.backdrop_path ? { backgroundImage: `url(${api.media.backdropUrl(media.id, 'md')}&v=${imageVersion})` } : { background: 'linear-gradient(to bottom right, #292929, #101010)' }}>
         <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--jf-bg) 0%, transparent 60%)' }} />
       </div>
 
@@ -115,7 +143,7 @@ export default function MediaDetailPage() {
             <div className="jf-detail-poster mx-auto md:mx-0">
               <div style={{ background: 'var(--jf-surface)' }}>
                 {media.poster_path ? (
-                  <img src={api.media.posterUrl(media.id, 'md')} alt={media.title} className="w-full h-full object-cover" />
+                  <img src={`${api.media.posterUrl(media.id, 'md')}&v=${imageVersion}`} alt={media.title} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-4xl md:text-6xl" style={{ color: 'var(--jf-text-muted)' }}>
                     {media.title.charAt(0)}
@@ -140,13 +168,13 @@ export default function MediaDetailPage() {
                   <div className="flex flex-wrap gap-3 mt-2">
                     <label className="jf-btn-outline cursor-pointer flex items-center gap-2" style={{ fontSize: '13px' }}>
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" /></svg>
-                      {uploadingImage ? 'Uploading...' : 'Upload Poster'}
-                      <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'poster')} className="hidden" />
+                      {uploadingImageType === 'poster' ? 'Uploading...' : 'Upload Poster'}
+                      <input type="file" accept="image/*" disabled={!!uploadingImageType} onChange={(e) => handleImageUpload(e, 'poster')} className="hidden" />
                     </label>
                     <label className="jf-btn-outline cursor-pointer flex items-center gap-2" style={{ fontSize: '13px' }}>
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" /></svg>
-                      {uploadingImage ? 'Uploading...' : 'Upload Backdrop'}
-                      <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'backdrop')} className="hidden" />
+                      {uploadingImageType === 'backdrop' ? 'Uploading...' : 'Upload Backdrop'}
+                      <input type="file" accept="image/*" disabled={!!uploadingImageType} onChange={(e) => handleImageUpload(e, 'backdrop')} className="hidden" />
                     </label>
                     <label className="jf-btn-outline cursor-pointer flex items-center gap-2" style={{ fontSize: '13px' }}>
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z" /></svg>
@@ -154,6 +182,17 @@ export default function MediaDetailPage() {
                       <input type="file" accept=".srt,.vtt" onChange={(e) => handleSubtitleUpload(e, null)} className="hidden" />
                     </label>
                   </div>
+                  {uploadingImageType && (
+                    <div className="rounded-lg p-3 mt-3" style={{ background: 'var(--jf-surface)' }}>
+                      <div className="flex items-center justify-between text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>
+                        <span>Uploading {uploadingImageType}...</span>
+                        <span>{imageUploadProgress}%</span>
+                      </div>
+                      <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.12)' }}>
+                        <div className="h-full rounded-full transition-all" style={{ width: `${imageUploadProgress}%`, background: 'var(--jf-primary)' }} />
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <>
