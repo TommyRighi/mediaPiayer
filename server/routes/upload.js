@@ -58,16 +58,24 @@ async function uploadRoutes(fastify) {
   fastify.post('/api/upload', { preHandler: [authMiddleware, adminMiddleware], bodyLimit: 5 * 1024 * 1024 * 1024 }, async (request, reply) => {
     const fields = {};
     let fileData = null;
+    let tempFilePath = null;
+    let writtenSize = null;
+
+    const estimated = estimateFileSize(request);
 
     for await (const part of request.parts()) {
       if (part.file) {
-        fileData = part;
+        const ext = path.extname(part.filename) || '.mp4';
+        tempFilePath = path.join(MEDIA_DIR, `upload-${Date.now()}-${nanoid()}${ext}`);
+        writtenSize = await writePartToPath(part, tempFilePath);
+        fileData = { filename: part.filename, mimetype: part.mimetype };
       } else {
         fields[part.fieldname] = part.value;
       }
     }
 
-    if (!fileData) {
+    if (!fileData || !tempFilePath) {
+      if (tempFilePath) { try { fs.unlinkSync(tempFilePath); } catch {} }
       return reply.status(400).send({ error: 'No file uploaded' });
     }
 
@@ -80,14 +88,17 @@ async function uploadRoutes(fastify) {
     const episodeNumber = fields.episodeNumber ? parseInt(fields.episodeNumber) : null;
 
     if (!type || !title) {
+      try { fs.unlinkSync(tempFilePath); } catch {}
       return reply.status(400).send({ error: 'type and title are required fields' });
     }
 
     if (title.trim().length > 200) {
+      try { fs.unlinkSync(tempFilePath); } catch {}
       return reply.status(400).send({ error: 'Title must be 200 characters or fewer' });
     }
 
     if (!['movie', 'series'].includes(type)) {
+      try { fs.unlinkSync(tempFilePath); } catch {}
       return reply.status(400).send({ error: 'type must be either movie or series' });
     }
 
@@ -95,11 +106,11 @@ async function uploadRoutes(fastify) {
     const id = nanoid();
     const ext = path.extname(fileData.filename) || '.mp4';
     if (!ALLOWED_EXTENSIONS.includes(ext.toLowerCase())) {
+      try { fs.unlinkSync(tempFilePath); } catch {}
       return reply.status(400).send({ error: `File type ${ext} not allowed. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}` });
     }
     const safeName = `${id}${ext}`;
 
-    const estimated = estimateFileSize(request);
     let fileDir;
     let filePath;
 
@@ -119,11 +130,8 @@ async function uploadRoutes(fastify) {
     }
 
     fs.mkdirSync(fileDir, { recursive: true });
-    const fileSize = await writePartToPath(fileData, filePath);
-
-    function cleanup() {
-      try { fs.unlinkSync(filePath); } catch {}
-    }
+    fs.renameSync(tempFilePath, filePath);
+    const fileSize = writtenSize;
 
     try {
       if (type === 'movie') {
@@ -144,7 +152,7 @@ async function uploadRoutes(fastify) {
 
       if (type === 'series') {
         if (!seasonNumber || !episodeNumber) {
-          cleanup();
+          try { fs.unlinkSync(filePath); } catch {}
           return reply.status(400).send({ error: 'seasonNumber and episodeNumber are required for series' });
         }
 
@@ -174,7 +182,7 @@ async function uploadRoutes(fastify) {
         return { series: db.prepare('SELECT * FROM media WHERE id = ?').get(series.id), episode };
       }
     } catch (err) {
-      cleanup();
+      try { fs.unlinkSync(filePath); } catch {}
       throw err;
     }
   });
@@ -186,29 +194,6 @@ async function uploadRoutes(fastify) {
       return reply.status(404).send({ error: 'Media not found' });
     }
 
-    let imageType = null;
-    let fileData = null;
-
-    for await (const part of request.parts()) {
-      if (part.file) {
-        fileData = part;
-      } else if (part.fieldname === 'type') {
-        imageType = part.value;
-      }
-    }
-
-    if (!fileData) {
-      return reply.status(400).send({ error: 'No file uploaded' });
-    }
-
-    if (!['poster', 'backdrop'].includes(imageType)) {
-      return reply.status(400).send({ error: 'type must be poster or backdrop' });
-    }
-
-    if (!fileData.mimetype || !fileData.mimetype.toLowerCase().startsWith('image/')) {
-      return reply.status(400).send({ error: 'Uploaded file must be an image' });
-    }
-
     const estimated = estimateFileSize(request);
     const baseDir = estimated !== null
       ? pickBestMediaDir(estimated, 'posters')
@@ -216,12 +201,37 @@ async function uploadRoutes(fastify) {
     const fileDir = path.join(baseDir, 'posters');
     fs.mkdirSync(fileDir, { recursive: true });
 
-    const tempPath = path.join(fileDir, `${media.id}-${imageType}-upload-${Date.now()}`);
-    await writePartToPath(fileData, tempPath);
+    let imageType = null;
+    let tempPath = null;
+    let fileMimeType = null;
+
+    for await (const part of request.parts()) {
+      if (part.file) {
+        tempPath = path.join(fileDir, `${media.id}-upload-${Date.now()}`);
+        fileMimeType = part.mimetype;
+        await writePartToPath(part, tempPath);
+      } else if (part.fieldname === 'type') {
+        imageType = part.value;
+      }
+    }
+
+    if (!tempPath) {
+      return reply.status(400).send({ error: 'No file uploaded' });
+    }
+
+    if (!['poster', 'backdrop'].includes(imageType)) {
+      try { fs.unlinkSync(tempPath); } catch {}
+      return reply.status(400).send({ error: 'type must be poster or backdrop' });
+    }
+
+    if (!fileMimeType || !fileMimeType.toLowerCase().startsWith('image/')) {
+      try { fs.unlinkSync(tempPath); } catch {}
+      return reply.status(400).send({ error: 'Uploaded file must be an image' });
+    }
 
     let filePath = path.join(fileDir, `${media.id}-${imageType}.webp`);
     try {
-      if (fileData.mimetype.toLowerCase() === 'image/gif') {
+      if (fileMimeType.toLowerCase() === 'image/gif') {
         filePath = path.join(fileDir, `${media.id}-${imageType}.gif`);
         fs.renameSync(tempPath, filePath);
       } else {
@@ -257,16 +267,24 @@ async function uploadRoutes(fastify) {
 
     const fields = {};
     let fileData = null;
+    let tempFilePath = null;
+    let writtenSize = null;
+
+    const estimated = estimateFileSize(request);
 
     for await (const part of request.parts()) {
       if (part.file) {
-        fileData = part;
+        const ext = path.extname(part.filename) || '.srt';
+        tempFilePath = path.join(MEDIA_DIR, `sub-upload-${Date.now()}-${nanoid()}${ext}`);
+        writtenSize = await writePartToPath(part, tempFilePath);
+        fileData = { filename: part.filename, mimetype: part.mimetype };
       } else {
         fields[part.fieldname] = part.value;
       }
     }
 
-    if (!fileData) {
+    if (!fileData || !tempFilePath) {
+      if (tempFilePath) { try { fs.unlinkSync(tempFilePath); } catch {} }
       return reply.status(400).send({ error: 'No file uploaded' });
     }
 
@@ -276,19 +294,20 @@ async function uploadRoutes(fastify) {
 
     const ext = path.extname(fileData.filename) || '.srt';
     if (!['.srt', '.vtt'].includes(ext.toLowerCase())) {
+      try { fs.unlinkSync(tempFilePath); } catch {}
       return reply.status(400).send({ error: 'File type not allowed for subtitles. Allowed: .srt, .vtt' });
     }
 
-    const estimated = estimateFileSize(request);
     const baseDir = estimated !== null
       ? pickBestMediaDir(estimated, 'subtitles')
       : MEDIA_DIR;
     const fileDir = path.join(baseDir, 'subtitles');
+    fs.mkdirSync(fileDir, { recursive: true });
     const subId = nanoid();
     const fileName = `${subId}${ext}`;
     const filePath = path.join(fileDir, fileName);
 
-    await writePartToPath(fileData, filePath);
+    fs.renameSync(tempFilePath, filePath);
 
     db.prepare(
       'INSERT INTO subtitles (id, media_id, episode_id, label, language, file_path) VALUES (?, ?, ?, ?, ?, ?)'

@@ -71,6 +71,7 @@ export default function MediaDetailPage() {
           }
         };
 
+        xhr.timeout = 120000;
         xhr.onload = () => {
           let parsed;
           try {
@@ -86,6 +87,7 @@ export default function MediaDetailPage() {
         };
 
         xhr.onerror = () => reject(new Error('Network error'));
+        xhr.ontimeout = () => reject(new Error('Upload timed out — the server may still be processing your image. Try refreshing the page.'));
         xhr.send(formData);
       });
       setMedia(data.media);

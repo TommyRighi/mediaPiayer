@@ -73,7 +73,9 @@ export default function UploadPage() {
         setUploading(false);
       };
 
+      xhr.timeout = 600000;
       xhr.onerror = () => { setError('Network error'); setUploading(false); };
+      xhr.ontimeout = () => { setError('Upload timed out — the server may still be processing. Try checking back later.'); setUploading(false); };
       xhr.send(formData);
     } catch (err) {
       setError(err.message);
