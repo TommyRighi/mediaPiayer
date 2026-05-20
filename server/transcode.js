@@ -1,4 +1,4 @@
-const { spawn, execSync } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { getDb } = require('./db');
@@ -10,10 +10,9 @@ let processing = false;
 
 function getVideoCodecInfo(filePath) {
   try {
-    const output = execSync(
-      `ffprobe -v error -show_entries stream=codec_name,codec_type -of csv=p=0 "${filePath}"`,
-      { encoding: 'utf-8', timeout: 15000 }
-    ).trim();
+    const output = execFileSync('ffprobe', [
+      '-v', 'error', '-show_entries', 'stream=codec_name,codec_type', '-of', 'csv=p=0', filePath
+    ], { encoding: 'utf-8', timeout: 15000 }).trim();
     const lines = output.split('\n').filter(Boolean);
     let videoCodec = 'unknown';
     let audioCodec = 'unknown';
@@ -30,10 +29,9 @@ function getVideoCodecInfo(filePath) {
 
 function getDuration(filePath) {
   try {
-    const output = execSync(
-      `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`,
-      { encoding: 'utf-8', timeout: 15000 }
-    ).trim();
+    const output = execFileSync('ffprobe', [
+      '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath
+    ], { encoding: 'utf-8', timeout: 15000 }).trim();
     const duration = parseFloat(output);
     return isNaN(duration) ? 0 : Math.round(duration);
   } catch {
@@ -43,10 +41,9 @@ function getDuration(filePath) {
 
 function getResolution(filePath) {
   try {
-    const output = execSync(
-      `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "${filePath}"`,
-      { encoding: 'utf-8', timeout: 15000 }
-    ).trim();
+    const output = execFileSync('ffprobe', [
+      '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', filePath
+    ], { encoding: 'utf-8', timeout: 15000 }).trim();
     const [width, height] = output.split(',').map(Number);
     return { width: width || 0, height: height || 0 };
   } catch {
@@ -56,16 +53,16 @@ function getResolution(filePath) {
 
 function detectHardwareEncoder() {
   try {
-    const encoders = execSync('ffmpeg -encoders 2>/dev/null', { encoding: 'utf-8', timeout: 5000 });
+    const encoders = execFileSync('ffmpeg', ['-encoders'], { encoding: 'utf-8', timeout: 5000 });
     if (encoders.includes('h264_videotoolbox')) return 'h264_videotoolbox';
     if (encoders.includes('h264_nvenc')) return 'h264_nvenc';
     if (encoders.includes('h264_vaapi')) return 'h264_vaapi';
     if (encoders.includes('h264_v4l2m2m') || encoders.includes('v4l2m2m')) {
       try {
-        const codecs = execSync('ffmpeg -hide_banner -codecs 2>/dev/null', { encoding: 'utf-8', timeout: 3000 });
-        const hasV4l2H264 = codecs.includes('h264_v4l2m2m');
-        const v4l2Devs = execSync('ls /dev/video* 2>/dev/null || echo ""', { encoding: 'utf-8', timeout: 1000 }).trim();
-        if (hasV4l2H264 && v4l2Devs) return 'h264_v4l2m2m';
+        const devs = fs.readdirSync('/dev').filter(f => f.startsWith('video'));
+        if (devs.length > 0) {
+          return 'h264_v4l2m2m';
+        }
       } catch {}
     }
     if (encoders.includes('h264_omx')) return 'h264_omx';

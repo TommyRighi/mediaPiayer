@@ -5,6 +5,7 @@ const navItems = [
   { path: '/', label: 'Home', icon: 'home' },
   { path: '/?type=movie', label: 'Movies', icon: 'movie' },
   { path: '/?type=series', label: 'Series', icon: 'series' },
+  { path: '/music', label: 'Music', icon: 'music' },
 ];
 
 const adminItems = [
@@ -20,6 +21,8 @@ function NavIcon({ icon }) {
       return <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z" /></svg>;
     case 'series':
       return <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z" /></svg>;
+    case 'music':
+      return <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" /></svg>;
     case 'upload':
       return <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z" /></svg>;
     case 'admin':

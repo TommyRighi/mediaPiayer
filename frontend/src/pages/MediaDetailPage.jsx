@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import ImageCropModal from '../components/ImageCropModal';
 
 export default function MediaDetailPage() {
   const { id } = useParams();
@@ -14,9 +15,42 @@ export default function MediaDetailPage() {
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
   const [imageVersion, setImageVersion] = useState(0);
   const [uploadingSub, setUploadingSub] = useState(null);
+  const [magnetUri, setMagnetUri] = useState('');
+  const [downloadStatus, setDownloadStatus] = useState(null);
+  const [downloadAvailable, setDownloadAvailable] = useState(false);
+  const [downloadStarting, setDownloadStarting] = useState(false);
+  const downloadPollRef = useRef(null);
+  const [cropModal, setCropModal] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const data = await api.downloads.status(id);
+        if (cancelled) return;
+        setDownloadAvailable(data.available);
+        setDownloadStatus(data.download);
+        if (data.download && (data.download.status === 'downloading' || data.download.status === 'importing')) {
+          downloadPollRef.current = setTimeout(poll, 3000);
+        } else if (data.download && data.download.status === 'completed') {
+          const refreshed = await api.media.get(id);
+          if (cancelled) return;
+          setMedia(refreshed.media);
+          setForm({
+            title: refreshed.media.title,
+            description: refreshed.media.description,
+            year: refreshed.media.year || '',
+            genre: refreshed.media.genre,
+          });
+        }
+      } catch {
+        if (!cancelled) setDownloadAvailable(false);
+      }
+    }
+
     api.media.get(id).then((data) => {
+      if (cancelled) return;
       setMedia(data.media);
       setForm({
         title: data.media.title,
@@ -25,7 +59,44 @@ export default function MediaDetailPage() {
         genre: data.media.genre,
       });
     });
-  }, [id]);
+
+    if (isAdmin) {
+      poll();
+    }
+
+    return () => {
+      cancelled = true;
+      if (downloadPollRef.current) clearTimeout(downloadPollRef.current);
+    };
+  }, [id, isAdmin]);
+
+  async function handleStartDownload() {
+    if (!magnetUri.trim()) return;
+    setDownloadStarting(true);
+    try {
+      await api.downloads.start(id, magnetUri.trim());
+      setDownloadStatus({ status: 'downloading', progress: 0, magnetUri: magnetUri.trim() });
+      setMagnetUri('');
+      const pollId = setTimeout(async () => {
+        const data = await api.downloads.status(id);
+        setDownloadAvailable(data.available);
+        setDownloadStatus(data.download);
+      }, 2000);
+      downloadPollRef.current = pollId;
+    } catch (err) {
+      alert(err.message);
+    }
+    setDownloadStarting(false);
+  }
+
+  async function handleCancelDownload() {
+    try {
+      await api.downloads.cancel(id);
+      setDownloadStatus(null);
+    } catch (err) {
+      alert(err.message);
+    }
+  }
 
   async function handleSave() {
     await api.media.update(id, form);
@@ -49,28 +120,36 @@ export default function MediaDetailPage() {
     }
   }
 
-  async function handleImageUpload(e, imageType) {
+  function handleImageFileSelect(e, imageType) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropModal({ imageSrc: reader.result, imageType });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }
+
+  async function handleCroppedImage(croppedBlob) {
+    const { imageType } = cropModal;
+    setCropModal(null);
     setUploadingImageType(imageType);
     setImageUploadProgress(0);
     try {
       const formData = new FormData();
       formData.append('type', imageType);
-      formData.append('file', file);
+      formData.append('file', croppedBlob, `${imageType}.webp`);
       const token = localStorage.getItem('token');
       const data = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', `/api/media/${id}/image`);
-
         if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-
         xhr.upload.onprogress = (ev) => {
           if (ev.lengthComputable) {
             setImageUploadProgress(Math.round((ev.loaded / ev.total) * 100));
           }
         };
-
         xhr.timeout = 120000;
         xhr.onload = () => {
           let parsed;
@@ -85,7 +164,6 @@ export default function MediaDetailPage() {
           }
           reject(new Error(parsed.error || 'Upload failed'));
         };
-
         xhr.onerror = () => reject(new Error('Network error'));
         xhr.ontimeout = () => reject(new Error('Upload timed out — the server may still be processing your image. Try refreshing the page.'));
         xhr.send(formData);
@@ -97,7 +175,6 @@ export default function MediaDetailPage() {
     }
     setUploadingImageType(null);
     setImageUploadProgress(0);
-    e.target.value = '';
   }
 
   async function handleSubtitleUpload(e, episodeId) {
@@ -170,13 +247,13 @@ export default function MediaDetailPage() {
                   <div className="flex flex-wrap gap-3 mt-2">
                     <label className="jf-btn-outline cursor-pointer flex items-center gap-2" style={{ fontSize: '13px' }}>
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" /></svg>
-                      {uploadingImageType === 'poster' ? 'Uploading...' : 'Upload Poster'}
-                      <input type="file" accept="image/*" disabled={!!uploadingImageType} onChange={(e) => handleImageUpload(e, 'poster')} className="hidden" />
+                      {uploadingImageType === 'poster' ? 'Uploading...' : 'Edit Poster'}
+                      <input type="file" accept="image/*" disabled={!!uploadingImageType} onChange={(e) => handleImageFileSelect(e, 'poster')} className="hidden" />
                     </label>
                     <label className="jf-btn-outline cursor-pointer flex items-center gap-2" style={{ fontSize: '13px' }}>
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" /></svg>
-                      {uploadingImageType === 'backdrop' ? 'Uploading...' : 'Upload Backdrop'}
-                      <input type="file" accept="image/*" disabled={!!uploadingImageType} onChange={(e) => handleImageUpload(e, 'backdrop')} className="hidden" />
+                      {uploadingImageType === 'backdrop' ? 'Uploading...' : 'Edit Backdrop'}
+                      <input type="file" accept="image/*" disabled={!!uploadingImageType} onChange={(e) => handleImageFileSelect(e, 'backdrop')} className="hidden" />
                     </label>
                     <label className="jf-btn-outline cursor-pointer flex items-center gap-2" style={{ fontSize: '13px' }}>
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6zm0 4h8v2H6zm10 0h2v2h-2zm-6-4h8v2h-8z" /></svg>
@@ -184,6 +261,60 @@ export default function MediaDetailPage() {
                       <input type="file" accept=".srt,.vtt" onChange={(e) => handleSubtitleUpload(e, null)} className="hidden" />
                     </label>
                   </div>
+                  {downloadAvailable !== false && (
+                    <div className="mt-3 rounded-lg p-3" style={{ background: 'var(--jf-surface)' }}>
+                      <div className="flex items-center gap-2 mb-2" style={{ color: 'var(--jf-text-secondary)' }}>
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z" /></svg>
+                        <span className="text-sm font-medium">Download via Magnet</span>
+                      </div>
+                      {downloadStatus && (downloadStatus.status === 'downloading' || downloadStatus.status === 'importing') ? (
+                        <div>
+                          <div className="flex items-center justify-between text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>
+                            <span>{downloadStatus.status === 'importing' ? 'Importing...' : 'Downloading...'}</span>
+                            <span>{Math.round((downloadStatus.progress || 0) * 100)}%</span>
+                          </div>
+                          <div className="h-2 rounded-full overflow-hidden mb-2" style={{ background: 'rgba(255,255,255,0.12)' }}>
+                            <div className="h-full rounded-full transition-all" style={{ width: `${Math.round((downloadStatus.progress || 0) * 100)}%`, background: downloadStatus.status === 'importing' ? '#f59e0b' : 'var(--jf-primary)' }} />
+                          </div>
+                          <button onClick={handleCancelDownload} className="text-xs px-2 py-1 rounded" style={{ color: 'var(--jf-error)', border: '1px solid var(--jf-error)' }}>Cancel Download</button>
+                        </div>
+                      ) : downloadStatus && downloadStatus.status === 'failed' ? (
+                        <div>
+                          <div className="text-sm mb-2" style={{ color: 'var(--jf-error)' }}>Download failed: {downloadStatus.error || 'Unknown error'}</div>
+                          <button onClick={() => setDownloadStatus(null)} className="jf-btn-outline text-xs" style={{ fontSize: '12px' }}>Dismiss</button>
+                        </div>
+                      ) : downloadStatus && downloadStatus.status === 'completed' ? (
+                        <div className="text-sm" style={{ color: '#22c55e' }}>Download complete. File imported successfully.</div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={magnetUri}
+                            onChange={(e) => setMagnetUri(e.target.value)}
+                            placeholder="magnet:?xt=urn:btih:..."
+                            className="jf-input flex-1 text-xs"
+                            disabled={downloadStarting}
+                          />
+                          <button
+                            onClick={handleStartDownload}
+                            disabled={!magnetUri.trim() || downloadStarting}
+                            className="jf-btn-primary text-xs whitespace-nowrap"
+                            style={{ fontSize: '12px', opacity: (!magnetUri.trim() || downloadStarting) ? 0.5 : 1 }}
+                          >
+                            {downloadStarting ? 'Starting...' : 'Start'}
+                          </button>
+                        </div>
+                      )}
+                      {media.file_path && !downloadStatus && (
+                        <div className="text-xs mt-1" style={{ color: 'var(--jf-text-muted)' }}>This will replace the existing video file.</div>
+                      )}
+                    </div>
+                  )}
+                  {!downloadAvailable && isAdmin && (
+                    <div className="mt-2 text-xs" style={{ color: 'var(--jf-text-muted)' }}>
+                      Torrent download is not available on this server.
+                    </div>
+                  )}
                   {uploadingImageType && (
                     <div className="rounded-lg p-3 mt-3" style={{ background: 'var(--jf-surface)' }}>
                       <div className="flex items-center justify-between text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>
@@ -227,6 +358,23 @@ export default function MediaDetailPage() {
                   {isConvertFailed && (
                     <div className="flex items-center gap-2 px-4 py-2 rounded text-sm font-medium" style={{ background: 'var(--jf-error)', color: '#fff' }}>
                       Conversion failed. The original file may still play if your browser supports it.
+                    </div>
+                  )}
+                  {media.download_status === 'downloading' && (
+                    <div className="flex items-center gap-2 px-4 py-2 rounded text-sm font-medium" style={{ background: '#3b82f6', color: '#fff' }}>
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="animate-spin"><path d="M12 4V2A10 10 0 0 0 2 12h2a8 8 0 0 1 8-8z" /></svg>
+                      Downloading via torrent...
+                    </div>
+                  )}
+                  {media.download_status === 'importing' && (
+                    <div className="flex items-center gap-2 px-4 py-2 rounded text-sm font-medium" style={{ background: '#f59e0b', color: '#000' }}>
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="animate-spin"><path d="M12 4V2A10 10 0 0 0 2 12h2a8 8 0 0 1 8-8z" /></svg>
+                      Importing downloaded file...
+                    </div>
+                  )}
+                  {media.download_status === 'failed' && (
+                    <div className="flex items-center gap-2 px-4 py-2 rounded text-sm font-medium" style={{ background: 'var(--jf-error)', color: '#fff' }}>
+                      Download failed. Try again from the Edit panel.
                     </div>
                   )}
                   <div className="flex items-center justify-center md:justify-start flex-wrap gap-3">
@@ -339,6 +487,15 @@ export default function MediaDetailPage() {
           )}
         </div>
       </div>
+
+      {cropModal && (
+        <ImageCropModal
+          imageSrc={cropModal.imageSrc}
+          imageType={cropModal.imageType}
+          onCropComplete={handleCroppedImage}
+          onClose={() => setCropModal(null)}
+        />
+      )}
     </div>
   );
 }

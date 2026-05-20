@@ -2,6 +2,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const Fastify = require('fastify');
 const cors = require('@fastify/cors');
+const helmet = require('@fastify/helmet');
 const multipart = require('@fastify/multipart');
 const statik = require('@fastify/static');
 const websocket = require('@fastify/websocket');
@@ -15,9 +16,13 @@ const watchRoutes = require('./routes/watch');
 const partyRoutes = require('./routes/parties');
 const adminRoutes = require('./routes/admin');
 const transcodeRoutes = require('./routes/transcode');
+const downloadRoutes = require('./routes/downloads');
+const requestRoutes = require('./routes/requests');
+const musicRoutes = require('./routes/music');
 const { MEDIA_DIRS } = require('./utils');
 const { getDb } = require('./db');
 const { resumePendingJobs } = require('./transcode');
+const { startPolling } = require('./transmission');
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -29,25 +34,30 @@ const fastify = Fastify({
       target: 'pino-pretty',
       options: { colorize: true },
     },
+    redact: ['req.headers.authorization', 'req.query.token'],
   },
-  bodyLimit: 5 * 1024 * 1024 * 1024,
+  bodyLimit: 1024 * 1024,
 });
 
 async function start() {
-  await fastify.register(rateLimit, {
+await fastify.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
     allowList: (request) => {
-      const url = request.url;
-      return url.includes('/video') || url.includes('/poster') ||
-             url.includes('/backdrop') || url.includes('/subtitles') ||
-             url.startsWith('/assets/');
+      const urlPath = request.url.split('?')[0];
+      return /^\/api\/media\/[^/]+\/(video|poster|backdrop)$/.test(urlPath) ||
+             /^\/api\/media\/[^/]+\/hls\//.test(urlPath) ||
+             /^\/api\/episodes\/[^/]+\/video$/.test(urlPath) ||
+             /^\/api\/episodes\/[^/]+\/hls\//.test(urlPath) ||
+             /^\/api\/subtitles\//.test(urlPath) ||
+             urlPath.startsWith('/assets/');
     },
   });
   const corsOrigin = process.env.NODE_ENV === 'production'
     ? (process.env.CORS_ORIGIN || false)
     : true;
   await fastify.register(cors, { origin: corsOrigin });
+  await fastify.register(helmet, { contentSecurityPolicy: false });
   await fastify.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 * 1024 } });
   await fastify.register(websocket);
 
@@ -72,8 +82,12 @@ async function start() {
   await fastify.register(partyRoutes);
   await fastify.register(adminRoutes);
   await fastify.register(transcodeRoutes);
+  await fastify.register(downloadRoutes);
+  await fastify.register(requestRoutes);
+  await fastify.register(musicRoutes);
 
   resumePendingJobs();
+  startPolling();
 
   fastify.addHook('onResponse', (request, reply, done) => {
     if (request.user && request.user.id) {

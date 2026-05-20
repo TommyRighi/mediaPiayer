@@ -133,6 +133,11 @@ function migrate() {
     db.exec(`ALTER TABLE users ADD COLUMN last_active_at TEXT`);
   }
 
+  const tokenVersionCol = db.prepare("PRAGMA table_info(users)").all().find(c => c.name === 'token_version');
+  if (!tokenVersionCol) {
+    db.exec(`ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0`);
+  }
+
   const transcodeCol = db.prepare("PRAGMA table_info(media)").all().find(c => c.name === 'transcode_status');
   if (!transcodeCol) {
     db.exec(`ALTER TABLE media ADD COLUMN transcode_status TEXT`);
@@ -163,6 +168,147 @@ function migrate() {
         title           TEXT,
         default_flag    INTEGER DEFAULT 0
       )
+    `);
+  }
+
+  const downloadsTable = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='downloads'"
+  ).get();
+  if (!downloadsTable) {
+    db.exec(`
+      CREATE TABLE downloads (
+        id            TEXT PRIMARY KEY,
+        media_id      TEXT NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+        torrent_hash  TEXT NOT NULL,
+        magnet_uri    TEXT NOT NULL,
+        status        TEXT NOT NULL DEFAULT 'downloading',
+        progress      REAL NOT NULL DEFAULT 0.0,
+        download_dir  TEXT,
+        error         TEXT,
+        created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        started_by    TEXT REFERENCES users(id)
+      )
+    `);
+  }
+
+  const downloadStatusCol = db.prepare("PRAGMA table_info(media)").all().find(c => c.name === 'download_status');
+  if (!downloadStatusCol) {
+    db.exec(`ALTER TABLE media ADD COLUMN download_status TEXT`);
+  }
+
+  const watchRequestsTable = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='watch_requests'"
+  ).get();
+  if (!watchRequestsTable) {
+    db.exec(`
+      CREATE TABLE watch_requests (
+        id            TEXT PRIMARY KEY,
+        created_by    TEXT NOT NULL REFERENCES users(id),
+        media_id      TEXT NOT NULL REFERENCES media(id),
+        episode_id    TEXT REFERENCES episodes(id),
+        scheduled_at  TEXT NOT NULL,
+        status        TEXT NOT NULL DEFAULT 'pending',
+        party_id      TEXT REFERENCES watch_parties(id),
+        created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+  }
+
+  const requestResponsesTable = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='request_responses'"
+  ).get();
+  if (!requestResponsesTable) {
+    db.exec(`
+      CREATE TABLE request_responses (
+        id         TEXT PRIMARY KEY,
+        request_id TEXT NOT NULL REFERENCES watch_requests(id) ON DELETE CASCADE,
+        user_id    TEXT NOT NULL REFERENCES users(id),
+        response   TEXT NOT NULL CHECK(response IN ('approved', 'dismissed')),
+        UNIQUE(request_id, user_id)
+      )
+    `);
+  }
+
+  const musicAlbumsTable = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='music_albums'"
+  ).get();
+  if (!musicAlbumsTable) {
+    db.exec(`
+      CREATE TABLE music_albums (
+        id          TEXT PRIMARY KEY,
+        title       TEXT NOT NULL,
+        artist      TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        genre       TEXT DEFAULT '',
+        year        INTEGER,
+        cover_path  TEXT,
+        created_at  TEXT DEFAULT (datetime('now')),
+        updated_at  TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE music_tracks (
+        id           TEXT PRIMARY KEY,
+        album_id     TEXT REFERENCES music_albums(id) ON DELETE CASCADE,
+        track_number INTEGER DEFAULT 0,
+        title        TEXT NOT NULL,
+        artist       TEXT DEFAULT '',
+        duration     REAL DEFAULT 0,
+        file_path     TEXT NOT NULL,
+        file_size    INTEGER DEFAULT 0,
+        created_at   TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE playlists (
+        id          TEXT PRIMARY KEY,
+        user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name        TEXT NOT NULL,
+        description  TEXT DEFAULT '',
+        cover_path  TEXT,
+        created_at  TEXT DEFAULT (datetime('now')),
+        updated_at  TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE playlist_tracks (
+        id          TEXT PRIMARY KEY,
+        playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+        track_id    TEXT NOT NULL REFERENCES music_tracks(id) ON DELETE CASCADE,
+        position    INTEGER NOT NULL DEFAULT 0,
+        added_at    TEXT DEFAULT (datetime('now')),
+        UNIQUE(playlist_id, track_id)
+      );
+
+      CREATE TABLE favorite_tracks (
+        id         TEXT PRIMARY KEY,
+        user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        track_id   TEXT NOT NULL REFERENCES music_tracks(id) ON DELETE CASCADE,
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(user_id, track_id)
+      );
+
+      CREATE TABLE track_progress (
+        id               TEXT PRIMARY KEY,
+        user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        track_id         TEXT NOT NULL REFERENCES music_tracks(id) ON DELETE CASCADE,
+        progress_seconds REAL NOT NULL DEFAULT 0,
+        duration         REAL DEFAULT 0,
+        completed        INTEGER DEFAULT 0,
+        updated_at       TEXT DEFAULT (datetime('now')),
+        UNIQUE(user_id, track_id)
+      );
+
+      CREATE TABLE youtube_downloads (
+        id          TEXT PRIMARY KEY,
+        user_id     TEXT NOT NULL REFERENCES users(id),
+        url         TEXT NOT NULL,
+        title       TEXT DEFAULT '',
+        artist      TEXT DEFAULT '',
+        status      TEXT NOT NULL DEFAULT 'pending',
+        progress    REAL DEFAULT 0,
+        file_path    TEXT,
+        track_id    TEXT REFERENCES music_tracks(id),
+        error       TEXT,
+        created_at  TEXT DEFAULT (datetime('now'))
+      );
     `);
   }
 }

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, getToken } from '../api';
+import { useAuth } from '../context/AuthContext';
+import ChatPanel from '../components/ChatPanel';
 import Plyr from 'plyr';
 import Hls from 'hls.js';
 import 'plyr/css';
@@ -8,6 +10,7 @@ import 'plyr/css';
 export default function PartyRoom() {
   const { partyId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const videoRef = useRef(null);
   const wsRef = useRef(null);
   const playerRef = useRef(null);
@@ -15,6 +18,7 @@ export default function PartyRoom() {
 
   const [party, setParty] = useState(null);
   const [members, setMembers] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [synced, setSynced] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
 
@@ -122,21 +126,23 @@ export default function PartyRoom() {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type !== 'sync') return;
+        if (msg.type === 'sync') {
+          const video = videoRef.current;
+          if (!video) return;
 
-        const video = videoRef.current;
-        if (!video) return;
-
-        if (msg.action === 'play') {
-          video.currentTime = msg.position;
-          video.play().catch(() => {});
-        } else if (msg.action === 'pause') {
-          video.currentTime = msg.position;
-          video.pause();
-        } else if (msg.action === 'seek') {
-          video.currentTime = msg.position;
+          if (msg.action === 'play') {
+            video.currentTime = msg.position;
+            video.play().catch(() => {});
+          } else if (msg.action === 'pause') {
+            video.currentTime = msg.position;
+            video.pause();
+          } else if (msg.action === 'seek') {
+            video.currentTime = msg.position;
+          }
+          setSynced(true);
+        } else if (msg.type === 'chat') {
+          setMessages((prev) => [...prev, msg]);
         }
-        setSynced(true);
       } catch (err) { console.error('WS message error:', err); }
     };
 
@@ -147,6 +153,20 @@ export default function PartyRoom() {
   function sendAction(type, position) {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     wsRef.current.send(JSON.stringify({ type, position }));
+  }
+
+  function sendChat(text) {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!user) return;
+
+    setMessages((prev) => [...prev, {
+      userId: user.id,
+      displayName: user.display_name,
+      text,
+      timestamp: new Date().toISOString(),
+    }]);
+
+    wsRef.current.send(JSON.stringify({ type: 'chat', text }));
   }
 
   function handlePlay() {
@@ -237,6 +257,15 @@ export default function PartyRoom() {
                 )}
               </div>
             ))}
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-neutral-800">
+            <h3 className="text-sm font-medium text-gray-400 uppercase mb-2">Chat</h3>
+            <ChatPanel
+              messages={messages}
+              onSend={sendChat}
+              currentUserId={user?.id}
+            />
           </div>
 
           <div className="mt-6 pt-4 border-t border-neutral-800">

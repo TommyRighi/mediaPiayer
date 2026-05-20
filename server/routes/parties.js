@@ -4,6 +4,9 @@ const { verifyToken } = require('../auth');
 const { nanoid } = require('nanoid');
 
 const partySockets = new Map();
+const messageRateLimits = new Map();
+const MSG_LIMIT = 10;
+const MSG_WINDOW = 5000;
 
 function generateInviteCode() {
   return nanoid(8);
@@ -82,7 +85,12 @@ async function partyRoutes(fastify) {
        WHERE pm.party_id = ?`
     ).all(party.id);
 
-    return { party, members };
+    const watchRequest = db.prepare(
+      `SELECT wr.*, (SELECT COUNT(*) FROM request_responses rr WHERE rr.request_id = wr.id AND rr.response = 'approved') AS approved_count
+       FROM watch_requests wr WHERE wr.party_id = ?`
+    ).get(party.id);
+
+    return { party, members, request: watchRequest || null };
   });
 
   fastify.get('/api/parties/:id/ws', { websocket: true }, (socket, request) => {
@@ -125,31 +133,83 @@ async function partyRoutes(fastify) {
     }
     partySockets.get(partyId).add(socket);
 
+    const db2 = getDb();
+    const linkedRequest = db2.prepare(
+      `SELECT wr.id, (SELECT COUNT(*) FROM request_responses rr WHERE rr.request_id = wr.id AND rr.response = 'approved') AS approved_count
+       FROM watch_requests wr WHERE wr.party_id = ?`
+    ).get(partyId);
+
+    if (linkedRequest) {
+      const presenceMsg = JSON.stringify({
+        type: 'presence',
+        connectedCount: partySockets.get(partyId).size,
+        approvedCount: linkedRequest.approved_count,
+      });
+      const sockets = partySockets.get(partyId);
+      if (sockets) {
+        for (const client of sockets) {
+          if (client.readyState === 1) {
+            client.send(presenceMsg);
+          }
+        }
+      }
+    }
+
     socket.on('message', (rawMsg) => {
       try {
         const msg = JSON.parse(rawMsg.toString());
 
-        if (!['play', 'pause', 'seek'].includes(msg.type)) return;
+        if (['play', 'pause', 'seek'].includes(msg.type)) {
+          const db = getDb();
+          const position = typeof msg.position === 'number' ? msg.position : 0;
 
-        const db = getDb();
-        const position = typeof msg.position === 'number' ? msg.position : 0;
+          db.prepare('UPDATE watch_parties SET position = ?, is_playing = ? WHERE id = ?').run(
+            position, msg.type === 'play' ? 1 : 0, partyId
+          );
 
-        db.prepare('UPDATE watch_parties SET position = ?, is_playing = ? WHERE id = ?').run(
-          position, msg.type === 'play' ? 1 : 0, partyId
-        );
+          const broadcast = JSON.stringify({
+            type: 'sync',
+            action: msg.type,
+            position,
+            userId,
+          });
 
-        const broadcast = JSON.stringify({
-          type: 'sync',
-          action: msg.type,
-          position,
-          userId,
-        });
+          const sockets = partySockets.get(partyId);
+          if (sockets) {
+            for (const client of sockets) {
+              if (client !== socket && client.readyState === 1) {
+                client.send(broadcast);
+              }
+            }
+          }
+        } else if (msg.type === 'chat') {
+          const text = typeof msg.text === 'string' ? msg.text.trim() : '';
+          if (!text || text.length > 500) return;
 
-        const sockets = partySockets.get(partyId);
-        if (sockets) {
-          for (const client of sockets) {
-            if (client !== socket && client.readyState === 1) {
-              client.send(broadcast);
+          const now = Date.now();
+          const userMsgs = (messageRateLimits.get(userId) || []).filter(t => now - t < MSG_WINDOW);
+          if (userMsgs.length >= MSG_LIMIT) return;
+          userMsgs.push(now);
+          messageRateLimits.set(userId, userMsgs);
+
+          const db = getDb();
+          const user = db.prepare('SELECT display_name FROM users WHERE id = ?').get(userId);
+          const displayName = user?.display_name || 'Unknown';
+
+          const broadcast = JSON.stringify({
+            type: 'chat',
+            userId,
+            displayName,
+            text,
+            timestamp: new Date().toISOString(),
+          });
+
+          const sockets = partySockets.get(partyId);
+          if (sockets) {
+            for (const client of sockets) {
+              if (client !== socket && client.readyState === 1) {
+                client.send(broadcast);
+              }
             }
           }
         }
@@ -166,8 +226,31 @@ async function partyRoutes(fastify) {
           partySockets.delete(partyId);
         }
       }
+
+      const db3 = getDb();
+      const linkedReq = db3.prepare(
+        `SELECT (SELECT COUNT(*) FROM request_responses rr WHERE rr.request_id = wr.id AND rr.response = 'approved') AS approved_count
+         FROM watch_requests wr WHERE wr.party_id = ?`
+      ).get(partyId);
+
+      if (linkedReq) {
+        const remaining = partySockets.get(partyId);
+        const presenceMsg = JSON.stringify({
+          type: 'presence',
+          connectedCount: remaining ? remaining.size : 0,
+          approvedCount: linkedReq.approved_count,
+        });
+        if (remaining) {
+          for (const client of remaining) {
+            if (client.readyState === 1) {
+              client.send(presenceMsg);
+            }
+          }
+        }
+      }
     });
   });
 }
 
 module.exports = partyRoutes;
+module.exports.partySockets = partySockets;

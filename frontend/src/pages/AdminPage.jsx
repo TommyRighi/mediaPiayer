@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom';
 export default function AdminPage() {
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState(null);
+  const [musicScanning, setMusicScanning] = useState(false);
+  const [musicScanResult, setMusicScanResult] = useState(null);
   const [lastAction, setLastAction] = useState(null);
   const [media, setMedia] = useState([]);
   const [storageInfo, setStorageInfo] = useState(null);
@@ -45,6 +47,18 @@ export default function AdminPage() {
       setScanResult({ error: err.message });
     }
     setScanning(false);
+  }
+
+  async function handleMusicScan() {
+    setMusicScanning(true);
+    setMusicScanResult(null);
+    try {
+      const result = await api.music.scan();
+      setMusicScanResult(result);
+    } catch (err) {
+      setMusicScanResult({ error: err.message });
+    }
+    setMusicScanning(false);
   }
 
   async function handleAddStorage() {
@@ -228,6 +242,30 @@ export default function AdminPage() {
           )}
           {scanResult?.error && (
             <div className="mt-4 text-sm text-red-400">{scanResult.error}</div>
+          )}
+        </div>
+
+        <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 mb-8">
+          <h2 className="text-lg font-medium mb-2">Music Scanner</h2>
+          <p className="text-gray-400 text-sm mb-4">
+            Scan configured storage directories for audio files. Place music in <code className="text-gray-300 bg-neutral-800 px-1 rounded">music/Artist/Album/</code> or <code className="text-gray-300 bg-neutral-800 px-1 rounded">music/singles/</code> subdirectories.
+          </p>
+
+          <button
+            onClick={handleMusicScan}
+            disabled={musicScanning}
+            className="jf-btn-primary"
+          >
+            {musicScanning ? 'Scanning...' : 'Scan for music'}
+          </button>
+
+          {musicScanResult && !musicScanResult.error && (
+            <div className="mt-4 text-sm" style={{ color: 'var(--jf-primary)' }}>
+              Found: {musicScanResult.albums} albums, {musicScanResult.tracks} tracks
+            </div>
+          )}
+          {musicScanResult?.error && (
+            <div className="mt-4 text-sm text-red-400">{musicScanResult.error}</div>
           )}
         </div>
 

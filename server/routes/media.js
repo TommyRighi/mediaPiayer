@@ -80,6 +80,7 @@ async function mediaRoutes(fastify) {
     reply.headers({
       'Content-Type': getImageMimeType(filePath),
       'Cache-Control': 'public, max-age=86400',
+      'Referrer-Policy': 'no-referrer',
     });
     return fs.createReadStream(filePath);
   });
@@ -109,6 +110,7 @@ async function mediaRoutes(fastify) {
     reply.headers({
       'Content-Type': getImageMimeType(filePath),
       'Cache-Control': 'public, max-age=86400',
+      'Referrer-Policy': 'no-referrer',
     });
     return fs.createReadStream(filePath);
   });
@@ -267,6 +269,7 @@ async function mediaRoutes(fastify) {
       reply.headers({
         'Content-Type': 'text/vtt; charset=utf-8',
         'Cache-Control': 'public, max-age=86400',
+        'Referrer-Policy': 'no-referrer',
       });
       return srtToVtt(content);
     }
@@ -274,6 +277,7 @@ async function mediaRoutes(fastify) {
     reply.headers({
       'Content-Type': 'text/vtt; charset=utf-8',
       'Cache-Control': 'public, max-age=86400',
+      'Referrer-Policy': 'no-referrer',
     });
     return content;
   });

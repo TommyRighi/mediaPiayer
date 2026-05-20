@@ -2,9 +2,15 @@ const path = require('path');
 const fs = require('fs');
 
 function isWithinDir(filePath, dir) {
-  const resolved = path.resolve(filePath);
-  const resolvedDir = path.resolve(dir);
-  return resolved.startsWith(resolvedDir + path.sep) || resolved === resolvedDir;
+  try {
+    const resolved = fs.realpathSync(path.resolve(filePath));
+    const resolvedDir = fs.realpathSync(path.resolve(dir));
+    return resolved.startsWith(resolvedDir + path.sep) || resolved === resolvedDir;
+  } catch {
+    const resolved = path.resolve(filePath);
+    const resolvedDir = path.resolve(dir);
+    return resolved.startsWith(resolvedDir + path.sep) || resolved === resolvedDir;
+  }
 }
 
 function isWithinAnyDir(filePath, dirs) {
@@ -56,6 +62,7 @@ async function streamHlsFile(request, reply, filePath) {
     'Cache-Control': 'no-cache',
     'ETag': etag,
     'Access-Control-Allow-Origin': '*',
+    'Referrer-Policy': 'no-referrer',
   });
 
   return fs.createReadStream(filePath);
@@ -81,6 +88,7 @@ async function streamVideo(request, reply, filePath) {
     'Cache-Control': 'public, max-age=3600',
     'ETag': etag,
     'Last-Modified': stat.mtime.toUTCString(),
+    'Referrer-Policy': 'no-referrer',
   };
 
   if (range) {
@@ -198,8 +206,8 @@ function getDiskFree(baseDir) {
     return diskusage.checkSync(baseDir).available;
   } catch {
     try {
-      const { execSync } = require('child_process');
-      const output = execSync(`df -k "${path.resolve(baseDir)}"`, { encoding: 'utf-8' });
+      const { execFileSync } = require('child_process');
+      const output = execFileSync('df', ['-k', path.resolve(baseDir)], { encoding: 'utf-8' });
       const lines = output.trim().split('\n');
       const parts = lines[lines.length - 1].split(/\s+/);
       return parseInt(parts[3]) * 1024;

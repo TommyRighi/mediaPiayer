@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { api, setToken, clearToken, getToken } from '../api';
+import { api, setToken, clearToken, getToken, clearMediaToken, refreshMediaToken } from '../api';
 
 const AuthContext = createContext(null);
 
@@ -11,17 +11,29 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (initialToken) {
       api.auth.me()
-        .then((data) => setUser(data.user))
+        .then((data) => {
+          setUser(data.user);
+          refreshMediaToken().catch(() => { /* ignore */ });
+        })
         .catch(() => clearToken())
         .finally(() => setLoading(false));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      refreshMediaToken().catch(() => { /* ignore */ });
+    }, 55 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [user]);
+
   async function login(email, password) {
     const data = await api.auth.login(email, password);
     setToken(data.token);
     setUser(data.user);
+    try { await refreshMediaToken(); } catch { /* ignore */ }
     return data;
   }
 
@@ -29,11 +41,13 @@ export function AuthProvider({ children }) {
     const data = await api.auth.register(email, password, displayName);
     setToken(data.token);
     setUser(data.user);
+    try { await refreshMediaToken(); } catch { /* ignore */ }
     return data;
   }
 
   function logout() {
     clearToken();
+    clearMediaToken();
     setUser(null);
   }
 
@@ -43,10 +57,18 @@ export function AuthProvider({ children }) {
     return res;
   }
 
+  async function changePassword(currentPassword, newPassword) {
+    const data = await api.auth.changePassword(currentPassword, newPassword);
+    setToken(data.token);
+    setUser(data.user);
+    try { await refreshMediaToken(); } catch { /* ignore */ }
+    return data;
+  }
+
   const isAdmin = user?.role === 'admin';
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile, isAdmin }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile, changePassword, isAdmin }}>
       {children}
     </AuthContext.Provider>
   );

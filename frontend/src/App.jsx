@@ -10,6 +10,9 @@ import PartyRoom from './pages/PartyRoom';
 import JoinPartyPage from './pages/JoinPartyPage';
 import AdminPage from './pages/AdminPage';
 import ProfilePage from './pages/ProfilePage';
+import MusicPage from './pages/MusicPage';
+import AlbumDetailPage from './pages/AlbumDetailPage';
+import PlaylistDetailPage from './pages/PlaylistDetailPage';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -48,6 +51,9 @@ export default function App() {
             <Route path="join" element={<JoinPartyPage />} />
             <Route path="admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
             <Route path="profile" element={<ProfilePage />} />
+            <Route path="music" element={<MusicPage />} />
+            <Route path="music/album/:id" element={<AlbumDetailPage />} />
+            <Route path="music/playlist/:id" element={<PlaylistDetailPage />} />
           </Route>
           <Route path="/watch/:mediaId" element={<ProtectedRoute><WatchPage /></ProtectedRoute>} />
           <Route path="/watch/:mediaId/:episodeId" element={<ProtectedRoute><WatchPage /></ProtectedRoute>} />
