@@ -5,6 +5,35 @@ APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MENU_SCRIPT="$APP_DIR/ssh-menu.sh"
 MENU_CLI="$APP_DIR/ssh-menu-cli.js"
 BASHRC="$HOME/.bashrc"
+INSTALL_SHELL_HOOK=0
+
+usage() {
+  cat <<EOF
+Usage: ./setup-ssh-menu.sh [--install-shell-hook]
+
+Creates local SSH menu helper scripts in this project.
+
+Options:
+  --install-shell-hook  Also add an SSH-only auto-launch block to ~/.bashrc.
+  -h, --help            Show this help.
+EOF
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --install-shell-hook)
+      INSTALL_SHELL_HOOK=1
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
 
 cat > "$MENU_CLI" <<'EOF'
 #!/usr/bin/env node
@@ -233,16 +262,18 @@ EOF
 
 chmod +x "$MENU_CLI"
 chmod +x "$MENU_SCRIPT"
-touch "$BASHRC"
 
-TMP_FILE="$(mktemp)"
-awk '
-  /^# >>> MEDIAPIAYER_SSH_MENU >>>$/ {skip=1; next}
-  /^# <<< MEDIAPIAYER_SSH_MENU <<<$/{skip=0; next}
-  !skip {print}
-' "$BASHRC" > "$TMP_FILE"
+if [[ "$INSTALL_SHELL_HOOK" -eq 1 ]]; then
+  touch "$BASHRC"
 
-cat >> "$TMP_FILE" <<EOF
+  TMP_FILE="$(mktemp)"
+  awk '
+    /^# >>> MEDIAPIAYER_SSH_MENU >>>$/ {skip=1; next}
+    /^# <<< MEDIAPIAYER_SSH_MENU <<<$/{skip=0; next}
+    !skip {print}
+  ' "$BASHRC" > "$TMP_FILE"
+
+  cat >> "$TMP_FILE" <<EOF
 
 # >>> MEDIAPIAYER_SSH_MENU >>>
 if [[ -n "\${SSH_CONNECTION:-}" && \$- == *i* ]]; then
@@ -252,8 +283,15 @@ fi
 # <<< MEDIAPIAYER_SSH_MENU <<<
 EOF
 
-mv "$TMP_FILE" "$BASHRC"
+  mv "$TMP_FILE" "$BASHRC"
+fi
 
 echo "Done."
 echo "Menu script: $MENU_SCRIPT"
-echo "Now reconnect via SSH to see the menu."
+if [[ "$INSTALL_SHELL_HOOK" -eq 1 ]]; then
+  echo "Shell hook installed in $BASHRC."
+  echo "Now reconnect via SSH to see the menu."
+else
+  echo "No shell startup files were modified."
+  echo "Run ./ssh-menu.sh manually, or rerun with --install-shell-hook to opt in to SSH auto-launch."
+fi
