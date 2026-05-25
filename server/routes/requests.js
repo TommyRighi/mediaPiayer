@@ -186,9 +186,8 @@ async function requestRoutes(fastify) {
 
     let partyId = req.party_id;
     if (!partyId) {
-      const { nanoid: genId } = require('nanoid');
-      partyId = genId();
-      const inviteCode = genId(8);
+      partyId = nanoid();
+      const inviteCode = nanoid(8);
 
       db.prepare(
         'INSERT INTO watch_parties (id, host_user_id, media_id, episode_id, invite_code) VALUES (?, ?, ?, ?, ?)'

@@ -14,8 +14,8 @@ async function authRoutes(fastify) {
     if (!trimmedName) {
       return reply.status(400).send({ error: 'Display name is required' });
     }
-    if (password.length < 6) {
-      return reply.status(400).send({ error: 'Password must be at least 6 characters' });
+    if (password.length < 8) {
+      return reply.status(400).send({ error: 'Password must be at least 8 characters' });
     }
     if (password.length > 128) {
       return reply.status(400).send({ error: 'Password must be 128 characters or fewer' });
@@ -124,8 +124,8 @@ async function authRoutes(fastify) {
     if (!currentPassword || !newPassword) {
       return reply.status(400).send({ error: 'currentPassword and newPassword are required' });
     }
-    if (newPassword.length < 6) {
-      return reply.status(400).send({ error: 'New password must be at least 6 characters' });
+    if (newPassword.length < 8) {
+      return reply.status(400).send({ error: 'New password must be at least 8 characters' });
     }
     if (newPassword.length > 128) {
       return reply.status(400).send({ error: 'New password must be 128 characters or fewer' });

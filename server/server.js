@@ -18,7 +18,7 @@ const adminRoutes = require('./routes/admin');
 const transcodeRoutes = require('./routes/transcode');
 const downloadRoutes = require('./routes/downloads');
 const requestRoutes = require('./routes/requests');
-const musicRoutes = require('./routes/music');
+const musicRoutes = require('./routes/music/index');
 const { MEDIA_DIRS } = require('./utils');
 const { getDb } = require('./db');
 const { resumePendingJobs } = require('./transcode');
@@ -57,7 +57,22 @@ await fastify.register(rateLimit, {
     ? (process.env.CORS_ORIGIN || false)
     : true;
   await fastify.register(cors, { origin: corsOrigin });
-  await fastify.register(helmet, { contentSecurityPolicy: false });
+  await fastify.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "blob:", "data:"],
+        mediaSrc: ["'self'", "blob:"],
+        connectSrc: ["'self'", "ws:", "wss:"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    },
+  });
   await fastify.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 * 1024 } });
   await fastify.register(websocket);
 
@@ -89,12 +104,18 @@ await fastify.register(rateLimit, {
   resumePendingJobs();
   startPolling();
 
+  if (!process.env.ADMIN_INVITE_CODE) {
+    fastify.log.warn('ADMIN_INVITE_CODE is not set — the first registered user will become admin automatically. Set ADMIN_INVITE_CODE in .env for production.');
+  }
+
   fastify.addHook('onResponse', (request, reply, done) => {
     if (request.user && request.user.id) {
       try {
         const db = getDb();
         db.prepare('UPDATE users SET last_active_at = datetime(\'now\') WHERE id = ?').run(request.user.id);
-      } catch (_) {}
+      } catch (err) {
+        fastify.log.warn({ err }, 'Failed to update last_active_at');
+      }
     }
     done();
   });

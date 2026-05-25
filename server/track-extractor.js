@@ -1,5 +1,4 @@
-const { execSync } = require('child_process');
-const { spawn } = require('child_process');
+const { execFileSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { getDb } = require('./db');
@@ -8,10 +7,12 @@ const { LANG_MAP, MEDIA_DIRS, isWithinAnyDir } = require('./utils');
 
 function probeStreams(filePath) {
   try {
-    const output = execSync(
-      `ffprobe -v error -show_entries stream=index,codec_type,codec_name,channels,channel_layout,bit_rate,sample_rate:stream_tags=language,title -of json "${filePath}"`,
-      { encoding: 'utf-8', timeout: 15000 }
-    );
+    const output = execFileSync('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'stream=index,codec_type,codec_name,channels,channel_layout,bit_rate,sample_rate:stream_tags=language,title',
+      '-of', 'json',
+      filePath,
+    ], { encoding: 'utf-8', timeout: 15000 });
     const data = JSON.parse(output);
     return (data.streams || []).map((s, i) => ({
       index: s.index !== undefined ? s.index : i,

@@ -193,7 +193,7 @@ async function importCompletedTorrent(download) {
       fields: ['hashString', 'name', 'downloadDir', 'percentDone'],
     });
   } catch (err) {
-    db.prepare('UPDATE downloads SET status = ?, error = ? WHERE id = ?').run('failed', `Cannot get torrent info: ${err.message}`, download.id);
+    db.prepare('UPDATE downloads SET status = ?, error = ? WHERE id = ?').run('failed', 'Cannot connect to Transmission daemon', download.id);
     db.prepare('UPDATE media SET download_status = ? WHERE id = ?').run('failed', download.media_id);
     return;
   }
@@ -331,7 +331,8 @@ async function pollDownloads() {
       db.prepare('UPDATE downloads SET status = ?, progress = ? WHERE id = ?').run('importing', 1, dl.id);
       db.prepare('UPDATE media SET download_status = ? WHERE id = ?').run('importing', dl.media_id);
       importCompletedTorrent(dl).catch((err) => {
-        db.prepare('UPDATE downloads SET status = ?, error = ? WHERE id = ?').run('failed', err.message, dl.id);
+        console.error('Import failed for', dl.media_id, err.message);
+        db.prepare('UPDATE downloads SET status = ?, error = ? WHERE id = ?').run('failed', 'Import failed', dl.id);
         db.prepare('UPDATE media SET download_status = ? WHERE id = ?').run('failed', dl.media_id);
       });
     }

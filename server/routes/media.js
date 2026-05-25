@@ -235,7 +235,7 @@ async function mediaRoutes(fastify) {
     return streamHlsFile(request, reply, filePath);
   });
 
-  fastify.get('/api/media/:id/subtitles', { preHandler: authMiddleware }, async (request) => {
+  fastify.get('/api/media/:id/subtitles', { preHandler: authMiddleware }, async (request, reply) => {
     const db = getDb();
     const media = db.prepare('SELECT id FROM media WHERE id = ?').get(request.params.id);
     if (!media) {
