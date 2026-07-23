@@ -9,17 +9,27 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(!!initialToken);
 
   useEffect(() => {
-    if (initialToken) {
-      api.auth.me()
-        .then((data) => {
-          setUser(data.user);
-          refreshMediaToken().catch((err) => {
-            console.error('Failed to obtain media token after retries; media playback will be blocked until it succeeds', err);
-          });
-        })
-        .catch(() => clearToken())
-        .finally(() => setLoading(false));
-    }
+    if (!initialToken) return;
+    // Fetch the profile and a fresh media token in parallel, and gate the
+    // first paint on BOTH. Media URLs (posters, backdrops, video) now use
+    // only the short-lived media token — never the long-lived main token —
+    // so we must have one before rendering any media, otherwise every image
+    // would 401 during the fetch window.
+    (async () => {
+      try {
+        const [meData] = await Promise.all([
+          api.auth.me(),
+          refreshMediaToken(1).catch((err) => {
+            console.error('Initial media token fetch failed; media may not load until the next refresh', err);
+          }),
+        ]);
+        setUser(meData.user);
+      } catch {
+        clearToken();
+      } finally {
+        setLoading(false);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

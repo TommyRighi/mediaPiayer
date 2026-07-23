@@ -68,7 +68,7 @@ function verifyEncoderWorks(encoder, extraArgs = []) {
 
 function detectHardwareEncoder() {
   try {
-    const encoders = execFileSync('ffmpeg', ['-encoders'], { encoding: 'utf-8', timeout: 5000 });
+    const encoders = execFileSync('ffmpeg', ['-encoders'], { encoding: 'utf-8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
     if (encoders.includes('h264_videotoolbox') && verifyEncoderWorks('h264_videotoolbox')) return 'h264_videotoolbox';
     if (encoders.includes('h264_nvenc') && verifyEncoderWorks('h264_nvenc')) return 'h264_nvenc';
     if (encoders.includes('h264_vaapi') && verifyEncoderWorks('h264_vaapi', ['-pix_fmt', 'yuv420p'])) return 'h264_vaapi';
