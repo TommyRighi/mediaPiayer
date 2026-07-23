@@ -12,6 +12,7 @@ function getDb() {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
+    db.pragma('busy_timeout = 5000');
     migrate();
   }
   return db;
@@ -311,6 +312,16 @@ function migrate() {
       );
     `);
   }
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_subtitles_media_id ON subtitles(media_id);
+    CREATE INDEX IF NOT EXISTS idx_subtitles_episode_id ON subtitles(episode_id);
+    CREATE INDEX IF NOT EXISTS idx_audio_tracks_media_id ON audio_tracks(media_id);
+    CREATE INDEX IF NOT EXISTS idx_audio_tracks_episode_id ON audio_tracks(episode_id);
+    CREATE INDEX IF NOT EXISTS idx_watch_progress_user_id ON watch_progress(user_id);
+    CREATE INDEX IF NOT EXISTS idx_downloads_media_id ON downloads(media_id);
+    CREATE INDEX IF NOT EXISTS idx_episodes_series_id ON episodes(series_id);
+  `);
 }
 
 function closeDb() {

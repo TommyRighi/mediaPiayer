@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import { api, hasMediaToken, refreshMediaToken } from '../api';
 import VideoPlayer from '../components/VideoPlayer';
 
 export default function WatchPage() {
@@ -9,6 +9,18 @@ export default function WatchPage() {
   const [media, setMedia] = useState(null);
   const [episode, setEpisode] = useState(null);
   const [transcodeStatus, setTranscodeStatus] = useState(null);
+  const [mediaTokenReady, setMediaTokenReady] = useState(hasMediaToken());
+  const [mediaTokenError, setMediaTokenError] = useState(false);
+
+  // Media URLs require a short-lived media token (never the main auth
+  // token, to avoid leaking a long-lived credential via query string).
+  // Block playback until one is confirmed available.
+  useEffect(() => {
+    if (mediaTokenReady) return;
+    refreshMediaToken()
+      .then(() => setMediaTokenReady(true))
+      .catch(() => setMediaTokenError(true));
+  }, [mediaTokenReady]);
 
   const hlsAvailable = episodeId
     ? episode?.hls_available
@@ -102,6 +114,24 @@ export default function WatchPage() {
             </div>
           )}
           <button onClick={() => navigate(-1)} className="jf-btn-secondary mt-6">Go Back</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!mediaTokenReady) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+        <div className="text-center">
+          {mediaTokenError ? (
+            <>
+              <h2 className="text-xl font-medium mb-2" style={{ color: 'var(--jf-text-primary)' }}>Unable to start playback</h2>
+              <p className="mb-4" style={{ color: 'var(--jf-text-muted)' }}>Couldn't obtain a media access token. Check your connection and try again.</p>
+              <button onClick={() => setMediaTokenError(false)} className="jf-btn-secondary mt-2">Retry</button>
+            </>
+          ) : (
+            <p style={{ color: 'var(--jf-text-muted)' }}>Preparing playback…</p>
+          )}
         </div>
       </div>
     );

@@ -15,8 +15,12 @@ function getMediaToken() {
   return null;
 }
 
+// Media URLs must never fall back to the long-lived main auth token — it
+// would leak a 7-day credential into the URL bar/history/logs. If no
+// short-lived media token is available yet, callers get an empty string
+// and playback should be blocked until refreshMediaToken() resolves.
 function mediaOrMainToken() {
-  return getMediaToken() || token();
+  return getMediaToken() || '';
 }
 
 async function request(method, path, body) {
@@ -177,9 +181,19 @@ export function clearMediaToken() {
   localStorage.removeItem('mediaToken');
 }
 
-export function refreshMediaToken() {
-  return api.auth.mediaToken().then((data) => {
-    setMediaToken(data.mediaToken);
-    return data.mediaToken;
-  });
+export function hasMediaToken() {
+  return !!getMediaToken();
+}
+
+export async function refreshMediaToken(retries = 3, delayMs = 2000) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const data = await api.auth.mediaToken();
+      setMediaToken(data.mediaToken);
+      return data.mediaToken;
+    } catch (err) {
+      if (attempt === retries) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
+    }
+  }
 }

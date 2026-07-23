@@ -241,8 +241,8 @@ async function importCompletedTorrent(download) {
     fs.renameSync(videoFile, destPath);
   } catch (err) {
     if (err.code === 'EXDEV') {
-      fs.copyFileSync(videoFile, destPath);
-      fs.unlinkSync(videoFile);
+      await fs.promises.copyFile(videoFile, destPath);
+      await fs.promises.unlink(videoFile);
     } else {
       throw err;
     }
@@ -270,7 +270,7 @@ async function importCompletedTorrent(download) {
 
   extractAndStoreAll(destPath, media.id, null).catch(() => {});
 
-  if (needsTranscoding(destPath)) {
+  if (await needsTranscoding(destPath)) {
     db.prepare('UPDATE media SET transcode_status = ? WHERE id = ?').run('pending', media.id);
     enqueue('movie', media.id);
   }

@@ -42,18 +42,14 @@ export default function VideoPlayer({ src, title, subtitles = [], audioTracks = 
   useEffect(() => {
     if (!videoRef.current || playerRef.current) return;
 
-    if (isHls && Hls.isSupported()) {
-      window.Hls = Hls;
-    }
+    const baseControls = [
+      'play-large', 'play', 'progress', 'current-time', 'duration',
+      'mute', 'volume', 'settings', 'captions', 'pip', 'airplay',
+      'fullscreen',
+    ];
 
-    const player = new Plyr(videoRef.current, {
-      controls: [
-        'play-large', 'play', 'progress', 'current-time', 'duration',
-        'mute', 'volume', 'settings', 'captions', 'pip', 'airplay',
-        'fullscreen',
-      ],
-      settings: ['captions', 'speed', 'quality'],
-      quality: { default: 0, options: [1080, 720, 480] },
+    const baseOptions = {
+      controls: baseControls,
       autopause: true,
       autoplay: true,
       invertTime: false,
@@ -63,11 +59,21 @@ export default function VideoPlayer({ src, title, subtitles = [], audioTracks = 
       captions: { active: false, update: true },
       fullscreen: { iosNative: true },
       seekTime: 10,
-    });
+    };
 
-    playerRef.current = player;
+    const attachPlayerEvents = (player) => {
+      player.on('playing', () => setPlaying(true));
+      player.on('pause', () => setPlaying(false));
+      player.on('ended', () => {
+        const v = videoRef.current;
+        if (v && onProgressRef.current) onProgressRef.current(Math.floor(v.duration || 0), true, Math.floor(v.duration || 0));
+        if (!onNextEpisodeRef.current) setPlaying(false);
+      });
+    };
 
     if (isHls && Hls.isSupported()) {
+      window.Hls = Hls;
+
       const hls = new Hls({
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
@@ -76,13 +82,44 @@ export default function VideoPlayer({ src, title, subtitles = [], audioTracks = 
       hls.loadSource(src);
       hls.attachMedia(videoRef.current);
 
+      // Plyr must be created AFTER the manifest is parsed so its quality
+      // menu can be wired to the real HLS renditions (Plyr reads quality
+      // options at construction; mutating them afterwards does nothing).
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        if (player.isReady) {
-          const v = videoRef.current;
-          if (v && initialTime > 0 && !initialTimeAppliedRef.current) {
-            v.currentTime = initialTime;
-            initialTimeAppliedRef.current = true;
-          }
+        if (!playerRef.current && videoRef.current) {
+          const heights = [...new Set(hls.levels.map((l) => l.height).filter(Boolean))]
+            .sort((a, b) => b - a);
+          const hasMultiple = heights.length > 1;
+
+          const player = new Plyr(videoRef.current, {
+            ...baseOptions,
+            settings: hasMultiple ? ['captions', 'quality', 'speed'] : ['captions', 'speed'],
+            ...(hasMultiple ? {
+              quality: {
+                default: 0, // 0 = Auto (ABR)
+                options: [0, ...heights],
+                forced: true,
+                onChange: (newQuality) => {
+                  if (newQuality === 0) {
+                    hls.currentLevel = -1; // re-enable adaptive bitrate
+                  } else {
+                    const levelIndex = hls.levels.findIndex((l) => l.height === newQuality);
+                    if (levelIndex >= 0) hls.currentLevel = levelIndex;
+                  }
+                },
+              },
+              i18n: { qualityLabel: { 0: 'Auto' } },
+            } : {}),
+          });
+
+          playerRef.current = player;
+          attachPlayerEvents(player);
+        }
+
+        const v = videoRef.current;
+        if (v && initialTime > 0 && !initialTimeAppliedRef.current) {
+          v.currentTime = initialTime;
+          initialTimeAppliedRef.current = true;
         }
       });
 
@@ -93,23 +130,24 @@ export default function VideoPlayer({ src, title, subtitles = [], audioTracks = 
       hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (event, data) => {
         setCurrentAudioTrack(data.id);
       });
+    } else {
+      const player = new Plyr(videoRef.current, {
+        ...baseOptions,
+        settings: ['captions', 'speed'],
+      });
+      playerRef.current = player;
+      attachPlayerEvents(player);
     }
-
-    player.on('playing', () => setPlaying(true));
-    player.on('pause', () => setPlaying(false));
-    player.on('ended', () => {
-      const v = videoRef.current;
-      if (v && onProgressRef.current) onProgressRef.current(Math.floor(v.duration || 0), true, Math.floor(v.duration || 0));
-      if (!onNextEpisodeRef.current) setPlaying(false);
-    });
 
     return () => {
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
-      player.destroy();
-      playerRef.current = null;
+      if (playerRef.current) {
+        playerRef.current.destroy();
+        playerRef.current = null;
+      }
       if (window.Hls === Hls) {
         delete window.Hls;
       }

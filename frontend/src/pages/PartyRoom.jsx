@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, getToken } from '../api';
+import { api, getToken, hasMediaToken, refreshMediaToken } from '../api';
 import { useAuth } from '../context/AuthContext';
 import ChatPanel from '../components/ChatPanel';
 import Plyr from 'plyr';
@@ -21,6 +21,7 @@ export default function PartyRoom() {
   const [messages, setMessages] = useState([]);
   const [synced, setSynced] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [mediaTokenReady, setMediaTokenReady] = useState(hasMediaToken());
 
   const token = getToken();
   const isMovie = party?.media_type === 'movie';
@@ -28,8 +29,17 @@ export default function PartyRoom() {
     ? !!(party?.media_file_path?.endsWith('.m3u8'))
     : !!(party?.episode_file_path?.endsWith('.m3u8'));
 
+  // Media URLs require a short-lived media token — never fall back to the
+  // long-lived main auth token, so playback waits until one is available.
+  useEffect(() => {
+    if (mediaTokenReady) return;
+    refreshMediaToken()
+      .then(() => setMediaTokenReady(true))
+      .catch((err) => console.error('Failed to obtain media token for party playback', err));
+  }, [mediaTokenReady]);
+
   const videoUrl = useMemo(() => {
-    if (!party) return null;
+    if (!party || !mediaTokenReady) return null;
     if (hlsAvailable) {
       return isMovie
         ? api.media.hlsUrl(party.media_id)
@@ -38,7 +48,7 @@ export default function PartyRoom() {
     return isMovie
       ? api.media.videoUrl(party.media_id)
       : party.episode_id ? api.media.episodeVideoUrl(party.episode_id) : null;
-  }, [party, hlsAvailable, isMovie]);
+  }, [party, hlsAvailable, isMovie, mediaTokenReady]);
 
   const isHls = videoUrl?.endsWith('.m3u8') || false;
 

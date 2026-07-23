@@ -142,7 +142,7 @@ async function uploadRoutes(fastify) {
 
         extractAndStoreAll(filePath, id, null).catch(() => {});
 
-        if (needsTranscoding(filePath)) {
+        if (await needsTranscoding(filePath)) {
           db.prepare('UPDATE media SET transcode_status = ? WHERE id = ?').run('pending', id);
           enqueue('movie', id);
         }
@@ -173,7 +173,7 @@ async function uploadRoutes(fastify) {
 
         extractAndStoreAll(filePath, null, episodeId).catch(() => {});
 
-        if (needsTranscoding(filePath)) {
+        if (await needsTranscoding(filePath)) {
           db.prepare('UPDATE episodes SET transcode_status = ? WHERE id = ?').run('pending', episodeId);
           enqueue('episode', episodeId);
         }

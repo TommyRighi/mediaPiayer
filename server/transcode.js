@@ -1,4 +1,6 @@
-const { spawn, execFileSync } = require('child_process');
+const { spawn, execFile, execFileSync } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
 const fs = require('fs');
 const path = require('path');
 const { getDb } = require('./db');
@@ -8,11 +10,12 @@ const jobs = new Map();
 const queue = [];
 let processing = false;
 
-function getVideoCodecInfo(filePath) {
+async function getVideoCodecInfo(filePath) {
   try {
-    const output = execFileSync('ffprobe', [
+    const { stdout } = await execFileAsync('ffprobe', [
       '-v', 'error', '-show_entries', 'stream=codec_name,codec_type', '-of', 'csv=p=0', filePath
-    ], { encoding: 'utf-8', timeout: 15000 }).trim();
+    ], { encoding: 'utf-8', timeout: 15000 });
+    const output = stdout.trim();
     const lines = output.split('\n').filter(Boolean);
     let videoCodec = 'unknown';
     let audioCodec = 'unknown';
@@ -27,51 +30,84 @@ function getVideoCodecInfo(filePath) {
   }
 }
 
-function getDuration(filePath) {
+async function getDuration(filePath) {
   try {
-    const output = execFileSync('ffprobe', [
+    const { stdout } = await execFileAsync('ffprobe', [
       '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath
-    ], { encoding: 'utf-8', timeout: 15000 }).trim();
-    const duration = parseFloat(output);
+    ], { encoding: 'utf-8', timeout: 15000 });
+    const duration = parseFloat(stdout.trim());
     return isNaN(duration) ? 0 : Math.round(duration);
   } catch {
     return 0;
   }
 }
 
-function getResolution(filePath) {
+async function getResolution(filePath) {
   try {
-    const output = execFileSync('ffprobe', [
+    const { stdout } = await execFileAsync('ffprobe', [
       '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', filePath
-    ], { encoding: 'utf-8', timeout: 15000 }).trim();
-    const [width, height] = output.split(',').map(Number);
+    ], { encoding: 'utf-8', timeout: 15000 });
+    const [width, height] = stdout.trim().split(',').map(Number);
     return { width: width || 0, height: height || 0 };
   } catch {
     return { width: 0, height: 0 };
   }
 }
 
+function verifyEncoderWorks(encoder, extraArgs = []) {
+  try {
+    execFileSync('ffmpeg', [
+      '-y', '-f', 'lavfi', '-i', 'color=black:s=320x240:d=1',
+      '-frames:v', '1', ...extraArgs, '-c:v', encoder, '-f', 'null', '-',
+    ], { encoding: 'utf-8', timeout: 8000, stdio: ['ignore', 'ignore', 'pipe'] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function detectHardwareEncoder() {
   try {
     const encoders = execFileSync('ffmpeg', ['-encoders'], { encoding: 'utf-8', timeout: 5000 });
-    if (encoders.includes('h264_videotoolbox')) return 'h264_videotoolbox';
-    if (encoders.includes('h264_nvenc')) return 'h264_nvenc';
-    if (encoders.includes('h264_vaapi')) return 'h264_vaapi';
+    if (encoders.includes('h264_videotoolbox') && verifyEncoderWorks('h264_videotoolbox')) return 'h264_videotoolbox';
+    if (encoders.includes('h264_nvenc') && verifyEncoderWorks('h264_nvenc')) return 'h264_nvenc';
+    if (encoders.includes('h264_vaapi') && verifyEncoderWorks('h264_vaapi', ['-pix_fmt', 'yuv420p'])) return 'h264_vaapi';
     if (encoders.includes('h264_v4l2m2m') || encoders.includes('v4l2m2m')) {
       try {
         const devs = fs.readdirSync('/dev').filter(f => f.startsWith('video'));
-        if (devs.length > 0) {
+        if (devs.length > 0 && verifyEncoderWorks('h264_v4l2m2m', ['-pix_fmt', 'yuv420p'])) {
           return 'h264_v4l2m2m';
         }
       } catch {}
     }
-    if (encoders.includes('h264_omx')) return 'h264_omx';
+    if (encoders.includes('h264_omx') && verifyEncoderWorks('h264_omx')) return 'h264_omx';
   } catch {}
   return 'libx264';
 }
 
 const HW_ENCODER = detectHardwareEncoder();
-console.log(`Transcode: using encoder ${HW_ENCODER}`);
+
+// Low-resource hosts (e.g. Raspberry Pi) can't afford multiple concurrent
+// software x264 encodes in one ffmpeg process — it will OOM or run far
+// slower than realtime. Detect a low-power host and cap software fallback
+// to a single low rendition.
+function isLowResourceHost() {
+  try {
+    const os = require('os');
+    const totalMemGB = os.totalmem() / (1024 ** 3);
+    const cpuCount = os.cpus().length;
+    // Memory is the real OOM signal (a Pi 3 B has 1GB). Also treat a
+    // low-memory + low-core box as constrained. Deliberately NOT triggered
+    // by core count alone, so a capable 4-core/large-RAM host is unaffected.
+    return totalMemGB <= 2 || (totalMemGB <= 4 && cpuCount <= 4);
+  } catch {
+    return false;
+  }
+}
+
+const LOW_RESOURCE_HOST = HW_ENCODER === 'libx264' && isLowResourceHost();
+
+console.log(`Transcode: using encoder ${HW_ENCODER}${LOW_RESOURCE_HOST ? ' (low-resource host: capping to single rendition)' : ''}`);
 
 const ALL_RENDITIONS = [
   { name: '480p',  width: 854,  height: 480,  videoBitrate: '1200k', maxrate: '1600k', bufsize: '2400k' },
@@ -87,12 +123,19 @@ function getRenditions(sourceHeight) {
     const capped = Math.min(sourceHeight, 720);
     return candidates.filter(r => r.height <= capped).slice(-1);
   }
+  if (LOW_RESOURCE_HOST) {
+    // Software encoding on a low-resource host: never run more than one
+    // rendition concurrently, and prefer the lowest available quality.
+    const capped = Math.min(sourceHeight, 480);
+    const low = candidates.filter(r => r.height <= capped);
+    return (low.length > 0 ? low : candidates).slice(0, 1);
+  }
   return candidates;
 }
 
-function needsTranscoding(filePath) {
+async function needsTranscoding(filePath) {
   if (!fs.existsSync(filePath)) return false;
-  const info = getVideoCodecInfo(filePath);
+  const info = await getVideoCodecInfo(filePath);
   if (!info) return false;
   const { videoCodec, audioCodec } = info;
   return videoCodec !== 'h264' || (audioCodec !== 'aac' && audioCodec !== 'unknown');
@@ -150,24 +193,24 @@ function buildVideoEncoderArgs(encoder, streamIdx, bitrate, maxrate, bufsize) {
   ];
 }
 
-function transcodeToHLS(inputPath, outputDir, mediaId, episodeId, onProgress) {
+async function transcodeToHLS(inputPath, outputDir, mediaId, episodeId, onProgress) {
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  const sourceRes = await getResolution(inputPath);
+  const renditions = getRenditions(sourceRes.height);
+
+  if (renditions.length === 0) {
+    renditions.push({
+      name: 'orig', width: sourceRes.width, height: sourceRes.height,
+      videoBitrate: '2000k', maxrate: '2500k', bufsize: '4000k',
+    });
+    renditions[0].origScale = true;
+  }
+
+  const audioTracks = await probeAudioTracks(inputPath);
+  const hasAudioTracks = audioTracks.length > 0;
+
   return new Promise((resolve, reject) => {
-    fs.mkdirSync(outputDir, { recursive: true });
-
-    const sourceRes = getResolution(inputPath);
-    const renditions = getRenditions(sourceRes.height);
-
-    if (renditions.length === 0) {
-      renditions.push({
-        name: 'orig', width: sourceRes.width, height: sourceRes.height,
-        videoBitrate: '2000k', maxrate: '2500k', bufsize: '4000k',
-      });
-      renditions[0].origScale = true;
-    }
-
-    const audioTracks = probeAudioTracks(inputPath);
-    const hasAudioTracks = audioTracks.length > 0;
-
     const filterParts = [];
     const mapParts = [];
     const codecParts = [];
@@ -333,7 +376,7 @@ async function processMovie(job) {
 
   job.inputPath = inputPath;
   job.outputPath = path.join(hlsDir, 'master.m3u8');
-  job.duration = getDuration(inputPath);
+  job.duration = await getDuration(inputPath);
 
   await transcodeToHLS(inputPath, hlsDir, job.mediaId, null, (seconds) => {
     job.progress = job.duration > 0 ? Math.min(99, Math.round((seconds / job.duration) * 100)) : 0;
@@ -359,7 +402,7 @@ async function processEpisode(job) {
 
   job.inputPath = inputPath;
   job.outputPath = path.join(hlsDir, 'master.m3u8');
-  job.duration = getDuration(inputPath);
+  job.duration = await getDuration(inputPath);
 
   await transcodeToHLS(inputPath, hlsDir, null, job.episodeId, (seconds) => {
     job.progress = job.duration > 0 ? Math.min(99, Math.round((seconds / job.duration) * 100)) : 0;

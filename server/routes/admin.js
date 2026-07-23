@@ -83,12 +83,12 @@ async function scanMediaFolder() {
             db.prepare(
               `INSERT INTO media (id, title, type, file_path, file_size, poster_path, backdrop_path) VALUES (?, ?, 'movie', ?, ?, ?, ?)`
             ).run(id, title, filePath, stat.size, posterPath, backdropPath);
-            if (posterPath) { results.posters; generateAllVariants(posterPath, 'poster'); }
-            if (backdropPath) generateAllVariants(backdropPath, 'backdrop');
+            if (posterPath) { results.posters++; await generateAllVariants(posterPath, 'poster'); }
+            if (backdropPath) await generateAllVariants(backdropPath, 'backdrop');
 
             extractAndStoreAll(filePath, id, null).catch(() => {});
 
-            if (needsTranscoding(filePath)) {
+            if (await needsTranscoding(filePath)) {
               db.prepare('UPDATE media SET transcode_status = ? WHERE id = ?').run('pending', id);
               enqueue('movie', id);
             }
@@ -104,11 +104,11 @@ async function scanMediaFolder() {
               if (posterPath !== media.poster_path || backdropPath !== media.backdrop_path) {
                 db.prepare('UPDATE media SET poster_path = ?, backdrop_path = ? WHERE id = ?')
                   .run(posterPath, backdropPath, existing.id);
-                if (posterPath && !media.poster_path) { results.posters++; generateAllVariants(posterPath, 'poster'); }
-                if (backdropPath && !media.backdrop_path) generateAllVariants(backdropPath, 'backdrop');
+                if (posterPath && !media.poster_path) { results.posters++; await generateAllVariants(posterPath, 'poster'); }
+                if (backdropPath && !media.backdrop_path) await generateAllVariants(backdropPath, 'backdrop');
               }
             }
-            if (!media.transcode_status && needsTranscoding(filePath)) {
+            if (!media.transcode_status && await needsTranscoding(filePath)) {
               db.prepare('UPDATE media SET transcode_status = ? WHERE id = ?').run('pending', existing.id);
               enqueue('movie', existing.id);
               results.converted++;
@@ -156,8 +156,8 @@ async function scanMediaFolder() {
             if (posterPath !== existing.poster_path || backdropPath !== existing.backdrop_path) {
               db.prepare('UPDATE media SET poster_path = ?, backdrop_path = ? WHERE id = ?')
                 .run(posterPath, backdropPath, seriesId);
-              if (posterPath && !existing.poster_path) { results.posters++; generateAllVariants(posterPath, 'poster'); }
-              if (backdropPath && !existing.backdrop_path) generateAllVariants(backdropPath, 'backdrop');
+              if (posterPath && !existing.poster_path) { results.posters++; await generateAllVariants(posterPath, 'poster'); }
+              if (backdropPath && !existing.backdrop_path) await generateAllVariants(backdropPath, 'backdrop');
             }
           }
         } else {
@@ -168,8 +168,8 @@ async function scanMediaFolder() {
             `INSERT INTO media (id, title, type, genre, poster_path, backdrop_path) VALUES (?, ?, 'series', '', ?, ?)`
           ).run(seriesId, showName, posterPath, backdropPath);
           results.series++;
-          if (posterPath) { results.posters++; generateAllVariants(posterPath, 'poster'); }
-          if (backdropPath) generateAllVariants(backdropPath, 'backdrop');
+          if (posterPath) { results.posters++; await generateAllVariants(posterPath, 'poster'); }
+          if (backdropPath) await generateAllVariants(backdropPath, 'backdrop');
         }
 
         for (const seasonFolder of seasonFolders) {
@@ -197,7 +197,7 @@ async function scanMediaFolder() {
 
               extractAndStoreAll(epPath, null, epId).catch(() => {});
 
-              if (needsTranscoding(epPath)) {
+              if (await needsTranscoding(epPath)) {
                 db.prepare('UPDATE episodes SET transcode_status = ? WHERE id = ?').run('pending', epId);
                 enqueue('episode', epId);
               }
@@ -225,7 +225,7 @@ async function scanMediaFolder() {
                 }
               }
               const ep = db.prepare('SELECT transcode_status FROM episodes WHERE id = ?').get(existing.id);
-              if (!ep.transcode_status && needsTranscoding(epPath)) {
+              if (!ep.transcode_status && await needsTranscoding(epPath)) {
                 db.prepare('UPDATE episodes SET transcode_status = ? WHERE id = ?').run('pending', existing.id);
                 enqueue('episode', existing.id);
                 results.converted++;
@@ -325,8 +325,8 @@ async function adminRoutes(fastify) {
             totalBytes = info.total;
           } catch {
             try {
-              const { execSync } = require('child_process');
-              const output = execSync(`df -k "${resolved}"`, { encoding: 'utf-8' });
+              const { execFileSync } = require('child_process');
+              const output = execFileSync('df', ['-k', resolved], { encoding: 'utf-8' });
               const lines = output.trim().split('\n');
               const parts = lines[lines.length - 1].split(/\s+/);
               totalBytes = parseInt(parts[1]) * 1024;

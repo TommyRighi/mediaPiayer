@@ -1,13 +1,15 @@
-const { execFileSync, spawn } = require('child_process');
+const { execFile, spawn } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
 const fs = require('fs');
 const path = require('path');
 const { getDb } = require('./db');
 const { nanoid } = require('nanoid');
 const { LANG_MAP, MEDIA_DIRS, isWithinAnyDir } = require('./utils');
 
-function probeStreams(filePath) {
+async function probeStreams(filePath) {
   try {
-    const output = execFileSync('ffprobe', [
+    const { stdout: output } = await execFileAsync('ffprobe', [
       '-v', 'error',
       '-show_entries', 'stream=index,codec_type,codec_name,channels,channel_layout,bit_rate,sample_rate:stream_tags=language,title',
       '-of', 'json',
@@ -31,13 +33,13 @@ function probeStreams(filePath) {
   }
 }
 
-function probeAudioTracks(filePath) {
-  const streams = probeStreams(filePath);
+async function probeAudioTracks(filePath) {
+  const streams = await probeStreams(filePath);
   return streams.filter(s => s.codec_type === 'audio');
 }
 
-function probeSubtitleStreams(filePath) {
-  const streams = probeStreams(filePath);
+async function probeSubtitleStreams(filePath) {
+  const streams = await probeStreams(filePath);
   return streams.filter(s => s.codec_type === 'subtitle');
 }
 
@@ -116,7 +118,7 @@ function storeAudioTrack(mediaId, episodeId, track, index) {
 async function extractAndStoreAll(filePath, mediaId, episodeId) {
   const results = { audioTracks: 0, subtitles: 0 };
 
-  const streams = probeStreams(filePath);
+  const streams = await probeStreams(filePath);
   if (!streams.length) return results;
 
   const audioStreams = streams.filter(s => s.codec_type === 'audio');

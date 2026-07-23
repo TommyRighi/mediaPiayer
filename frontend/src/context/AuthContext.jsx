@@ -13,7 +13,9 @@ export function AuthProvider({ children }) {
       api.auth.me()
         .then((data) => {
           setUser(data.user);
-          refreshMediaToken().catch(() => { /* ignore */ });
+          refreshMediaToken().catch((err) => {
+            console.error('Failed to obtain media token after retries; media playback will be blocked until it succeeds', err);
+          });
         })
         .catch(() => clearToken())
         .finally(() => setLoading(false));
@@ -24,7 +26,9 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!user) return;
     const interval = setInterval(() => {
-      refreshMediaToken().catch(() => { /* ignore */ });
+      refreshMediaToken().catch((err) => {
+        console.error('Media token refresh failed after retries', err);
+      });
     }, 55 * 60 * 1000);
     return () => clearInterval(interval);
   }, [user]);
