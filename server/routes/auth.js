@@ -7,7 +7,7 @@ const DUMMY_PASSWORD_HASH = hashPassword(randomBytes(32).toString('hex'));
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function authRoutes(fastify) {
-  fastify.get('/api/auth/config', async () => ({ sessionProtocol: 1, registration: 'invite', socialEnabled: process.env.SOCIAL_ENABLED === 'true', privateByDefault: true }));
+  fastify.get('/api/auth/config', async () => ({ sessionProtocol: 1, registration: 'invite', ...require('../features').getFeatures(), privateByDefault: true }));
   fastify.post('/api/auth/register', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { email, password, displayName, inviteCode } = request.body || {};
     if (typeof email !== 'string' || email.length > 254 || !EMAIL_REGEX.test(email) || typeof displayName !== 'string' || !displayName.trim() || displayName.trim().length > 50 || !validPassword(password)) {

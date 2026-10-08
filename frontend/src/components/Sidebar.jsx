@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -5,16 +6,26 @@ const navItems = [
   { path: '/', label: 'Home', icon: 'home' },
   { path: '/?type=movie', label: 'Movies', icon: 'movie' },
   { path: '/?type=series', label: 'Series', icon: 'series' },
+  { path: '/my-list', label: 'My List', icon: 'list' },
+  { path: '/calendar', label: 'Calendar', icon: 'calendar' },
   { path: '/music', label: 'Music', icon: 'music' },
 ];
 
 const adminItems = [
   { path: '/upload', label: 'Upload', icon: 'upload' },
   { path: '/admin', label: 'Admin', icon: 'admin' },
+  { path: '/downloads', label: 'Downloads', icon: 'download' },
+  { path: '/settings', label: 'Settings', icon: 'admin' },
 ];
 
 function NavIcon({ icon }) {
   switch (icon) {
+    case 'list':
+      return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 3h12v18l-6-4-6 4z" /></svg>;
+    case 'calendar':
+      return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 11h18M8 15h2M14 15h2" /></svg>;
+    case 'download':
+      return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4" /></svg>;
     case 'home':
       return <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" /></svg>;
     case 'movie':
@@ -38,13 +49,29 @@ function NavIcon({ icon }) {
   }
 }
 
-export default function Sidebar({ collapsed, mobileOpen, onClose }) {
+export default function Sidebar({ collapsed, mobileOpen, isMobile, onClose }) {
   const { isAdmin, socialEnabled } = useAuth();
   const location = useLocation();
+  const navigation = useRef(null);
+  useEffect(() => {
+    if (!mobileOpen || !isMobile) return;
+    const element = navigation.current;
+    const focusable = () => [...element.querySelectorAll('a, button')];
+    focusable()[0]?.focus();
+    const trap = event => {
+      if (event.key !== 'Tab') return;
+      const items = focusable();
+      const first = items[0]; const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    element.addEventListener('keydown', trap);
+    return () => element.removeEventListener('keydown', trap);
+  }, [mobileOpen, isMobile]);
 
   const isActive = (path) => {
-    if (path === '/') return location.pathname === '/' && !location.search;
-    if (path.includes('?')) return location.pathname + location.search === path;
+    if (path === '/') return location.pathname === '/' && !new URLSearchParams(location.search).get('type');
+    if (path.includes('?')) return location.pathname === '/' && new URLSearchParams(location.search).get('type') === new URLSearchParams(path.split('?')[1]).get('type');
     return location.pathname.startsWith(path);
   };
 
@@ -53,12 +80,13 @@ export default function Sidebar({ collapsed, mobileOpen, onClose }) {
   return (
     <>
       <div className={`jf-sidebar-overlay ${mobileOpen ? 'jf-sidebar-overlay-mobile-open' : ''}`} onClick={onClose} />
-      <nav className={`jf-sidebar ${collapsed ? 'jf-sidebar-collapsed' : ''} ${mobileOpen ? 'jf-sidebar-mobile-open' : ''}`}>
+      <nav ref={navigation} id="primary-navigation" aria-label="Main navigation" inert={isMobile && !mobileOpen ? true : undefined} className={`jf-sidebar ${collapsed ? 'jf-sidebar-collapsed' : ''} ${mobileOpen ? 'jf-sidebar-mobile-open' : ''}`}>
         <div className="jf-sidebar-brand">
           <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2">
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>
           {!collapsed && <span>MediaPiayer</span>}
+          {isMobile && <button onClick={onClose} aria-label="Close navigation" className="ml-auto p-2 text-xl">×</button>}
         </div>
 
         <div className="jf-sidebar-nav">
@@ -66,6 +94,7 @@ export default function Sidebar({ collapsed, mobileOpen, onClose }) {
             <Link
               key={path}
               to={path}
+              aria-current={isActive(path) ? 'page' : undefined}
               onClick={onClose}
               className={`jf-sidebar-item ${isActive(path) ? 'jf-sidebar-item-active' : ''}`}
               title={collapsed ? label : undefined}

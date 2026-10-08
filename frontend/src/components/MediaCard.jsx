@@ -1,95 +1,37 @@
 import { Link } from 'react-router-dom';
+import WatchlistButton from './WatchlistButton';
 import { api } from '../api';
 
-export default function MediaCard({ media, progress, variant = 'portrait' }) {
-  const linkTo = media.watchUrl || (media.type === 'movie'
-    ? `/movie/${media.id}`
-    : `/series/${media.id}`);
-
-  const progressPct = progress && progress.progress_seconds && media.duration
-    ? Math.min(100, (progress.progress_seconds / media.duration) * 100)
-    : 0;
-
-  const watched = progress && progress.completed;
-
-  const hasPoster = media.poster_path;
-  const hasBackdrop = media.backdrop_path;
-
-  const isConverting = media.transcode_status === 'pending' || media.transcode_status === 'converting';
-
-  if (variant === 'backdrop') {
-    return (
-      <Link to={linkTo} className="flex-shrink-0 group relative overflow-hidden" style={{ width: '72vw', maxWidth: '350px' }}>
-        <div className="relative" style={{ paddingBottom: '56.25%' }}>
-          {hasBackdrop ? (
-            <img src={api.media.backdropUrl(media.id, 'sm')} alt={media.title} className="absolute inset-0 w-full h-full object-cover" style={{ borderRadius: '0.3em' }} loading="lazy" />
-          ) : hasPoster ? (
-            <img src={api.media.posterUrl(media.id, 'sm')} alt={media.title} className="absolute inset-0 w-full h-full object-cover" style={{ borderRadius: '0.3em' }} loading="lazy" />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--jf-surface)', borderRadius: '0.3em' }}>
-              <span className="text-2xl" style={{ color: 'var(--jf-text-muted)' }}>{media.title.charAt(0)}</span>
-            </div>
-          )}
-          {watched && (
-            <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--jf-primary)' }}>
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="var(--jf-bg)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
-            </div>
-          )}
-          {isConverting && (
-            <div className="absolute top-2 left-2 px-2 py-0.5 rounded text-xs font-medium" style={{ background: '#f59e0b', color: '#000' }}>
-              Converting...
-            </div>
-          )}
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.5)', borderRadius: '0.3em' }}>
-            <div className="w-10 h-10 rounded-full border-2 border-white flex items-center justify-center">
-              <span className="text-white ml-0.5 text-lg">&#9654;</span>
-            </div>
-          </div>
-        </div>
-        <p className="text-sm font-medium mt-1.5 truncate" style={{ color: 'var(--jf-text-primary)' }}>{media.title}</p>
-        {media.episode_number && <p className="text-xs mt-1 text-neutral-400">S{media.season_number} E{media.episode_number} · {media.episode_title}</p>}
-        {progressPct > 0 && !watched && <p className="text-xs mt-1 text-neutral-400">{Math.max(1, Math.ceil((media.duration - progress.progress_seconds) / 60))} min left</p>}
-        {progressPct > 0 && !watched && (
-          <div className="h-1 rounded-full overflow-hidden mt-1" style={{ background: 'rgba(255,255,255,0.12)' }}>
-            <div className="h-full rounded-full" style={{ width: `${progressPct}%`, background: 'var(--jf-primary)' }} />
-          </div>
-        )}
-      </Link>
-    );
-  }
-
-  return (
-    <Link to={linkTo} className="flex-shrink-0 group relative overflow-hidden" style={{ width: '30vw', maxWidth: '180px' }}>
-      <div className="relative" style={{ paddingBottom: '150%' }}>
-        {hasPoster ? (
-          <img src={api.media.posterUrl(media.id, 'sm')} alt={media.title} className="absolute inset-0 w-full h-full object-cover" style={{ borderRadius: '0.3em' }} loading="lazy" />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--jf-surface-elevated, #292929)', borderRadius: '0.3em' }}>
-            <span className="text-3xl" style={{ color: 'var(--jf-text-muted)' }}>{media.title.charAt(0)}</span>
-          </div>
-        )}
-        {watched && (
-          <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--jf-primary)' }}>
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="var(--jf-bg)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
-          </div>
-        )}
-        {isConverting && (
-          <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: '#f59e0b', color: '#000' }}>
-            Conv...
-          </div>
-        )}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.5)', borderRadius: '0.3em' }}>
-          <div className="w-10 h-10 rounded-full border-2 border-white flex items-center justify-center">
-            <span className="text-white ml-0.5 text-lg">&#9654;</span>
-          </div>
-        </div>
+export default function MediaCard({ media, progress, variant = 'portrait', grid = false }) {
+  const details = media.type === 'movie' ? `/movie/${media.id}` : `/series/${media.id}`;
+  const linkTo = media.watchUrl || details;
+  const landscape = variant === 'backdrop';
+  const downloading = ['downloading', 'importing'].includes(media.download_status);
+  const converting = downloading || ['pending', 'converting'].includes(media.transcode_status);
+  const unavailable = media.type === 'movie' && ((!media.file_path && !media.watchUrl) || media.file_size === 0);
+  const playable = !converting && !unavailable;
+  const watched = progress?.completed;
+  const percent = progress?.progress_seconds && media.duration ? Math.min(100, progress.progress_seconds / media.duration * 100) : 0;
+  const minutes = media.duration > 0 ? Math.max(1, Math.round(media.duration / 60)) : null;
+  const poster = landscape && media.backdrop_path ? api.media.backdropUrl(media.id, 'sm') : media.poster_path ? api.media.posterUrl(media.id, 'sm') : null;
+  const hue = [...media.title].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 70 + 165;
+  return <article className={`jf-media-card ${landscape ? 'jf-media-card-landscape' : ''} ${grid ? 'jf-media-card-grid' : ''}`}>
+    <Link to={linkTo} className="jf-media-card-link" title={media.title}>
+      <div className="jf-media-art" style={{ '--card-hue': hue }}>
+        {poster ? <img src={poster} alt="" loading="lazy" decoding="async" /> : <div className="jf-media-placeholder"><span className="jf-media-placeholder-kind">{media.type === 'movie' ? 'FILM' : 'SERIES'}</span><span className="jf-media-placeholder-title">{media.title}</span><span className="jf-media-placeholder-year">{media.year || 'MediaPiayer'}</span></div>}
+        {(converting || unavailable || watched) && <span className={`jf-media-badge ${converting ? 'jf-media-badge-preparing' : ''}`}>{downloading ? 'Downloading' : converting ? 'Preparing' : unavailable ? 'Unavailable' : 'Watched'}</span>}
+        <span className="jf-media-info-hover">{landscape ? 'Continue watching' : 'View details'}</span>
+        {percent > 0 && !watched && <div className="jf-media-progress" role="progressbar" aria-label={`${media.title} progress`} aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${percent}%` }} /></div>}
       </div>
-      {progressPct > 0 && !watched && (
-        <div className="absolute bottom-0 left-0 right-0 h-1 rounded-full overflow-hidden mx-1" style={{ background: 'rgba(255,255,255,0.12)' }}>
-          <div className="h-full rounded-full" style={{ width: `${progressPct}%`, background: 'var(--jf-primary)' }} />
-        </div>
-      )}
-      <p className="text-sm font-medium mt-1.5 truncate" style={{ color: 'var(--jf-text-primary)' }}>{media.title}</p>
+      <h3 className="jf-media-title">{media.title}</h3>
+      <p className="jf-media-meta">{[media.year, minutes && `${minutes} min`].filter(Boolean).join(' · ') || (media.type === 'movie' ? 'Movie' : 'Series')}</p>
+      {media.episode_number && <p className="jf-media-meta">S{media.season_number} E{media.episode_number} · {media.episode_title}</p>}
+      {percent > 0 && !watched && <p className="jf-media-meta">{Math.max(1, Math.ceil((media.duration - progress.progress_seconds) / 60))} min left</p>}
     </Link>
-  );
+    <div className="jf-media-actions">
+      <WatchlistButton media={media} compact />
+      {media.type === 'movie' || media.watchUrl ? playable ? <Link className="jf-card-play" to={media.watchUrl || `/watch/${media.id}`} aria-label={`${percent > 0 && !watched ? 'Resume' : 'Play'} ${media.title}`}><span aria-hidden="true">▶</span> {percent > 0 && !watched ? 'Resume' : 'Play'}</Link> : <span className="jf-card-status">{downloading ? 'Available after download' : converting ? 'Preparing video…' : 'Video unavailable'}</span> : <Link className="jf-card-play" to={details}>Episodes</Link>}
+      {landscape && <Link to={details} className="jf-card-details" aria-label={`Details for ${media.title}`}>Details</Link>}
+    </div>
+  </article>;
 }

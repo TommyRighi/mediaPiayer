@@ -2,6 +2,11 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
+const WatchlistPage = lazy(() => import('./pages/WatchlistPage'));
+const CalendarPage = lazy(() => import('./pages/CalendarPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const DownloadsPage = lazy(() => import('./pages/DownloadsPage'));
+const MusicManagePage = lazy(() => import('./pages/MusicManagePage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const BrowsePage = lazy(() => import('./pages/BrowsePage'));
 const MediaDetailPage = lazy(() => import('./pages/MediaDetailPage'));
@@ -56,6 +61,11 @@ export default function App() {
             <Route path="scene/:partyId" element={<PartyRoom />} />
             <Route path="join" element={<JoinPartyPage />} />
             <Route path="admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
+            <Route path="my-list" element={<WatchlistPage />} />
+            <Route path="calendar" element={<CalendarPage />} />
+            <Route path="settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
+            <Route path="downloads" element={<AdminRoute><DownloadsPage /></AdminRoute>} />
+            <Route path="music/manage" element={<AdminRoute><MusicManagePage /></AdminRoute>} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="music" element={<MusicPage />} />
             <Route path="music/album/:id" element={<AlbumDetailPage />} />

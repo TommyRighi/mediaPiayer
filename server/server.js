@@ -116,6 +116,7 @@ await fastify.register(rateLimit, {
 
   await fastify.register(authRoutes);
   await fastify.register(mediaRoutes);
+  await fastify.register(require('./routes/watchlist'));
   await fastify.register(seriesRoutes);
   await fastify.register(uploadRoutes);
   await fastify.register(watchRoutes);

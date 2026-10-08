@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect, useId } from 'react';
 import Cropper from 'react-easy-crop';
 
 export default function ImageCropModal({ imageSrc, imageType, onCropComplete, onClose }) {
@@ -7,6 +7,11 @@ export default function ImageCropModal({ imageSrc, imageType, onCropComplete, on
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [aspectLocked, setAspectLocked] = useState(true);
   const canvasRef = useRef(null);
+  const dialogRef = useRef(null);
+  const titleId = useId();
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => { const dialog = dialogRef.current; dialog.showModal(); return () => dialog.close(); }, []);
 
   const aspectRatio = imageType === 'poster' ? 2 / 3 : 16 / 9;
 
@@ -17,50 +22,33 @@ export default function ImageCropModal({ imageSrc, imageType, onCropComplete, on
   async function createCroppedImage() {
     if (!croppedAreaPixels || !imageSrc) return;
 
-    const image = new Image();
-    image.crossOrigin = 'anonymous';
-
-    await new Promise((resolve, reject) => {
-      image.onload = resolve;
-      image.onerror = reject;
-      image.src = imageSrc;
-    });
-
-    const canvas = canvasRef.current || document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-
-    canvas.width = croppedAreaPixels.width;
-    canvas.height = croppedAreaPixels.height;
-
-    ctx.drawImage(
-      image,
-      croppedAreaPixels.x,
-      croppedAreaPixels.y,
-      croppedAreaPixels.width,
-      croppedAreaPixels.height,
-      0,
-      0,
-      croppedAreaPixels.width,
-      croppedAreaPixels.height
-    );
-
-    canvas.toBlob((blob) => {
-      if (blob) {
-        onCropComplete(blob);
-      }
-    }, 'image/webp', 0.9);
+    setProcessing(true); setError('');
+    try {
+      const image = new Image();
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = () => reject(new Error('Unable to open this image.'));
+        image.src = imageSrc;
+      });
+      const canvas = canvasRef.current || document.createElement('canvas');
+      canvas.width = Math.round(croppedAreaPixels.width);
+      canvas.height = Math.round(croppedAreaPixels.height);
+      canvas.getContext('2d').drawImage(image, croppedAreaPixels.x, croppedAreaPixels.y, croppedAreaPixels.width, croppedAreaPixels.height, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.9));
+      if (!blob) throw new Error('Unable to create the cover. Try another image.');
+      await onCropComplete(blob);
+    } catch (err) { setError(err.message); }
+    finally { setProcessing(false); }
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex flex-col"
-      style={{ background: 'rgba(0,0,0,0.92)' }}
-    >
-      <div className="flex items-center justify-between px-4 py-3" style={{ background: 'var(--jf-surface)', borderBottom: '1px solid var(--jf-divider)' }}>
-        <h2 className="text-lg font-semibold" style={{ color: 'var(--jf-text-primary)' }}>
+    <dialog ref={dialogRef} className="jf-crop-dialog flex flex-col" aria-labelledby={titleId} onCancel={event => { event.preventDefault(); if (!processing) onClose(); }}>
+
+      <div className="flex flex-wrap gap-3 items-center justify-between px-4 py-3" style={{ background: 'var(--jf-surface)', borderBottom: '1px solid var(--jf-divider)' }}>
+        <h2 id={titleId} className="text-lg font-semibold" style={{ color: 'var(--jf-text-primary)' }}>
           Edit {imageType === 'poster' ? 'Poster' : 'Backdrop'}
         </h2>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 cursor-pointer text-sm" style={{ color: 'var(--jf-text-secondary)' }}>
             <input
               type="checkbox"
@@ -70,11 +58,12 @@ export default function ImageCropModal({ imageSrc, imageType, onCropComplete, on
             />
             Lock aspect ratio
           </label>
-          <button onClick={onClose} className="jf-btn-outline" style={{ padding: '8px 16px' }}>Cancel</button>
-          <button onClick={createCroppedImage} className="jf-btn-primary" style={{ padding: '8px 16px' }}>Apply & Upload</button>
+          <button disabled={processing} onClick={onClose} className="jf-btn-outline" style={{ padding: '8px 16px' }}>Cancel</button>
+          <button disabled={processing || !croppedAreaPixels} onClick={createCroppedImage} className="jf-btn-primary" style={{ padding: '8px 16px' }}>{processing ? 'Preparing image…' : 'Save cover'}</button>
         </div>
       </div>
 
+      {error && <p role="alert" className="p-4">{error}</p>}
       <div className="relative flex-1" style={{ background: '#0a0a0a' }}>
         <Cropper
           image={imageSrc}
@@ -94,6 +83,7 @@ export default function ImageCropModal({ imageSrc, imageType, onCropComplete, on
         <span className="text-sm flex-shrink-0" style={{ color: 'var(--jf-text-muted)' }}>Zoom</span>
         <input
           type="range"
+          aria-label="Image zoom"
           min={1}
           max={3}
           step={0.01}
@@ -108,6 +98,6 @@ export default function ImageCropModal({ imageSrc, imageType, onCropComplete, on
       </div>
 
       <canvas ref={canvasRef} className="hidden" />
-    </div>
+    </dialog>
   );
 }

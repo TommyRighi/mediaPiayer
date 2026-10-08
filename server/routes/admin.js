@@ -298,6 +298,16 @@ async function cleanMissingMedia() {
 }
 
 async function adminRoutes(fastify) {
+  const { getFeatures, setFeatures } = require('../features');
+  fastify.get('/api/admin/settings', { preHandler: [authMiddleware, adminMiddleware] }, async () => getFeatures());
+  fastify.patch('/api/admin/settings', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
+    const values = request.body;
+    if (!values || Array.isArray(values) || typeof values !== 'object' || !Object.keys(values).length ||
+        Object.entries(values).some(([key, value]) => !['socialEnabled', 'downloadsEnabled'].includes(key) || typeof value !== 'boolean')) {
+      return reply.code(400).send({ error: 'Impostazioni non valide.' });
+    }
+    return setFeatures(values);
+  });
   fastify.post('/api/admin/scan', { preHandler: [authMiddleware, adminMiddleware] }, async () => {
     const results = await scanMediaFolder();
     return { success: true, ...results };

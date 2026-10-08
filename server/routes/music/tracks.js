@@ -85,7 +85,8 @@ async function tracksRoutes(fastify) {
       fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    const safeName = trackTitle.replace(/[/\\?%*:|"<>]/g, '_') + ext;
+    const id = nanoid();
+    const safeName = id + ext;
     const filePath = path.join(targetDir, safeName);
     await pipeline(data.file, fs.createWriteStream(filePath));
     if (data.file.truncated) {
@@ -94,7 +95,6 @@ async function tracksRoutes(fastify) {
     }
     const fileSize = (await fs.promises.stat(filePath)).size;
 
-    const id = nanoid();
     const db = getDb();
     db.prepare(
       'INSERT INTO music_tracks (id, album_id, track_number, title, artist, file_path, file_size) VALUES (?, ?, ?, ?, ?, ?, ?)'

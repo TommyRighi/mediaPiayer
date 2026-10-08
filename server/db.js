@@ -20,6 +20,8 @@ function getDb() {
 
 function migrate() {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS app_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
+
     CREATE TABLE IF NOT EXISTS users (
       id            TEXT PRIMARY KEY,
       email         TEXT UNIQUE NOT NULL,
@@ -44,6 +46,13 @@ function migrate() {
       duration      INTEGER DEFAULT 0,
       created_at    TEXT DEFAULT (datetime('now')),
       uploaded_by   TEXT REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS user_watchlist (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      media_id TEXT NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, media_id)
     );
 
     CREATE TABLE IF NOT EXISTS episodes (

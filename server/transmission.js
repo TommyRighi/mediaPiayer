@@ -3,14 +3,12 @@ const path = require('path');
 const { getDb } = require('./db');
 const { needsTranscoding, enqueue } = require('./transcode');
 const { extractAndStoreAll } = require('./track-extractor');
-const { MEDIA_DIR, MEDIA_DIRS, pickBestMediaDir, isWithinAnyDir } = require('./utils');
-const { generateAllVariants } = require('./imageProcessor');
+const { MEDIA_DIR, MEDIA_DIRS, isWithinDir, isWithinAnyDir } = require('./utils');
 
 const ALLOWED_EXTENSIONS = ['.mp4', '.mkv', '.webm', '.mov', '.avi'];
 const MAGNET_REGEX = /^magnet:\?xt=urn:btih:[a-fA-F0-9]{40}(&[a-zA-Z0-9._%+-]+=[^&]+)*$/;
 const POLL_INTERVAL_MS = 5000;
 
-let transmissionUrl = null;
 let csrfToken = null;
 let pollingTimer = null;
 
@@ -20,10 +18,16 @@ function getTransmissionConfig() {
 }
 
 async function rpcRequest(method, arguments_) {
-  const url = getTransmissionConfig();
-  if (!url) throw new Error('TRANSMISSION_URL not configured');
+  const configuredUrl = getTransmissionConfig();
+  if (!configuredUrl) throw new Error('TRANSMISSION_URL not configured');
+  const url = new URL(configuredUrl);
 
   const headers = { 'Content-Type': 'application/json' };
+  if (url.username || url.password) {
+    headers.Authorization = `Basic ${Buffer.from(`${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`).toString('base64')}`;
+    url.username = '';
+    url.password = '';
+  }
   if (csrfToken) headers['X-Transmission-Session-Id'] = csrfToken;
 
   let response;
@@ -32,6 +36,7 @@ async function rpcRequest(method, arguments_) {
       method: 'POST',
       headers,
       body: JSON.stringify({ method, arguments: arguments_ || {} }),
+      signal: AbortSignal.timeout(10000),
     });
   } catch (err) {
     csrfToken = null;
@@ -45,6 +50,7 @@ async function rpcRequest(method, arguments_) {
       method: 'POST',
       headers,
       body: JSON.stringify({ method, arguments: arguments_ || {} }),
+      signal: AbortSignal.timeout(10000),
     });
   }
 
@@ -78,7 +84,15 @@ function validateMagnetUri(uri) {
   return MAGNET_REGEX.test(uri.trim());
 }
 
+const startingMedia = new Set();
 async function addMagnet(magnetUri, mediaId, userId) {
+  if (startingMedia.has(mediaId)) throw new Error('A download is already in progress for this media');
+  startingMedia.add(mediaId);
+  try { return await startMagnet(magnetUri, mediaId, userId); }
+  finally { startingMedia.delete(mediaId); }
+}
+
+async function startMagnet(magnetUri, mediaId, userId) {
   const uri = magnetUri.trim();
   if (!validateMagnetUri(uri)) {
     throw new Error('Invalid magnet URI format. Only magnet:?xt=urn:btih:<40-char-hex-hash> is supported.');
@@ -87,23 +101,27 @@ async function addMagnet(magnetUri, mediaId, userId) {
   const db = getDb();
   const media = db.prepare('SELECT id, type, title, file_path FROM media WHERE id = ?').get(mediaId);
   if (!media) throw new Error('Media not found');
+  if (media.type !== 'movie') throw new Error('Torrent imports currently support movies only');
+  if (db.prepare("SELECT id FROM media WHERE id = ? AND transcode_status IN ('pending', 'converting')").get(mediaId)) throw new Error('Preparation is already in progress for this media');
 
-  const existing = db.prepare("SELECT id FROM downloads WHERE media_id = ? AND status IN ('downloading', 'importing')").get(mediaId);
+  const existing = db.prepare("SELECT id FROM downloads WHERE media_id = ? AND status IN ('downloading', 'importing', 'cancelling')").get(mediaId);
   if (existing) throw new Error('A download is already in progress for this media');
 
   const available = await checkAvailable();
   if (!available) throw new Error('Transmission daemon is not available');
 
-  const result = await rpcRequest('torrent-add', { filename: uri });
+  const { nanoid } = await import('nanoid');
+  const id = nanoid();
+  const downloadDir = path.resolve(process.env.TRANSMISSION_DOWNLOAD_DIR || path.join(MEDIA_DIR, '.downloads'), id);
+  fs.mkdirSync(downloadDir, { recursive: true });
+  const result = await rpcRequest('torrent-add', { filename: uri, 'download-dir': downloadDir });
+
+  if (result['torrent-duplicate']) throw new Error('This torrent is already in Transmission');
 
   const torrent = result['torrent-added'] || result['torrent-duplicate'];
   if (!torrent || !torrent.hashString) {
     throw new Error('Failed to add torrent to Transmission');
   }
-
-  const downloadDir = torrent.downloadDir || '';
-  const { nanoid } = await import('nanoid');
-  const id = nanoid();
 
   db.prepare(
     'INSERT INTO downloads (id, media_id, torrent_hash, magnet_uri, status, progress, download_dir, started_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
@@ -116,18 +134,23 @@ async function addMagnet(magnetUri, mediaId, userId) {
 
 async function getDownloadStatus(mediaId) {
   const db = getDb();
-  const download = db.prepare('SELECT * FROM downloads WHERE media_id = ? ORDER BY created_at DESC LIMIT 1').get(mediaId);
+  const download = db.prepare('SELECT * FROM downloads WHERE media_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').get(mediaId);
   return download || null;
 }
 
 async function cancelDownload(mediaId) {
   const db = getDb();
-  const download = db.prepare("SELECT * FROM downloads WHERE media_id = ? AND status IN ('downloading', 'importing')").get(mediaId);
+  const download = db.prepare("SELECT * FROM downloads WHERE media_id = ? AND status IN ('downloading', 'importing', 'cancelling')").get(mediaId);
   if (!download) throw new Error('No active download for this media');
+  if (download.status !== 'downloading') throw new Error('Import is in progress; wait for it to finish');
+  db.prepare('UPDATE downloads SET status = ? WHERE id = ?').run('cancelling', download.id);
 
   try {
     await rpcRequest('torrent-remove', { ids: [download.torrent_hash], 'delete-local-data': true });
-  } catch {}
+  } catch {
+    db.prepare('UPDATE downloads SET status = ? WHERE id = ?').run('downloading', download.id);
+    throw new Error('Cannot cancel the torrent while Transmission is unavailable');
+  }
 
   db.prepare('DELETE FROM downloads WHERE id = ?').run(download.id);
   db.prepare('UPDATE media SET download_status = NULL WHERE id = ?').run(mediaId);
@@ -142,32 +165,22 @@ async function listDownloads() {
   ).all();
 }
 
-function findLargestVideoFile(dir) {
+function findLargestVideoFile(dir, files = []) {
   if (!fs.existsSync(dir)) return null;
 
   let largestFile = null;
   let largestSize = 0;
 
-  function walk(d) {
-    const entries = fs.readdirSync(d, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(d, entry.name);
-      if (entry.isDirectory()) {
-        walk(fullPath);
-      } else if (entry.isFile()) {
-        const ext = path.extname(entry.name).toLowerCase();
-        if (ALLOWED_EXTENSIONS.includes(ext)) {
-          const stat = fs.statSync(fullPath);
-          if (stat.size > largestSize) {
-            largestSize = stat.size;
-            largestFile = fullPath;
-          }
-        }
-      }
+  for (const file of files) {
+    if (typeof file.name !== 'string' || !Number.isFinite(file.length) || !Number.isFinite(file.bytesCompleted) || file.bytesCompleted < file.length) continue;
+    const fullPath = path.resolve(dir, file.name);
+    if (!isWithinDir(fullPath, dir) || !fs.existsSync(fullPath)) continue;
+    const stat = fs.statSync(fullPath);
+    if (stat.isFile() && ALLOWED_EXTENSIONS.includes(path.extname(fullPath).toLowerCase()) && stat.size === file.length && stat.size > largestSize) {
+      largestSize = stat.size;
+      largestFile = fullPath;
     }
   }
-
-  walk(dir);
   return largestFile;
 }
 
@@ -190,7 +203,7 @@ async function importCompletedTorrent(download) {
   try {
     torrentInfo = await rpcRequest('torrent-get', {
       ids: [download.torrent_hash],
-      fields: ['hashString', 'name', 'downloadDir', 'percentDone'],
+      fields: ['hashString', 'name', 'downloadDir', 'percentDone', 'files'],
     });
   } catch (err) {
     db.prepare('UPDATE downloads SET status = ?, error = ? WHERE id = ?').run('failed', 'Cannot connect to Transmission daemon', download.id);
@@ -206,9 +219,10 @@ async function importCompletedTorrent(download) {
   }
 
   const torrent = torrents[0];
+  if (!(torrent.percentDone >= 1)) throw new Error('Torrent download is not complete');
   const downloadDir = torrent.downloadDir || download.download_dir || '';
 
-  const videoFile = findLargestVideoFile(downloadDir);
+  const videoFile = findLargestVideoFile(downloadDir, torrent.files);
   if (!videoFile) {
     db.prepare('UPDATE downloads SET status = ?, error = ? WHERE id = ?').run('failed', 'No video file found in download', download.id);
     db.prepare('UPDATE media SET download_status = ? WHERE id = ?').run('failed', download.media_id);
@@ -251,8 +265,10 @@ async function importCompletedTorrent(download) {
   const previousPath = media.file_path;
   const stat = fs.statSync(destPath);
 
-  db.prepare('UPDATE media SET file_path = ?, file_size = ?, download_status = ? WHERE id = ?').run(
-    destPath, stat.size, 'completed', media.id
+  // Keep playback blocked until the file has been checked for conversion.
+  const convert = await needsTranscoding(destPath);
+  db.prepare('UPDATE media SET file_path = ?, file_size = ?, download_status = ?, transcode_status = ? WHERE id = ?').run(
+    destPath, stat.size, 'completed', convert ? 'pending' : null, media.id
   );
 
   if (previousPath && previousPath !== destPath && isWithinAnyDir(previousPath, MEDIA_DIRS) && fs.existsSync(previousPath)) {
@@ -270,8 +286,7 @@ async function importCompletedTorrent(download) {
 
   extractAndStoreAll(destPath, media.id, null).catch(() => {});
 
-  if (await needsTranscoding(destPath)) {
-    db.prepare('UPDATE media SET transcode_status = ? WHERE id = ?').run('pending', media.id);
+  if (convert) {
     enqueue('movie', media.id);
   }
 }
@@ -312,6 +327,7 @@ async function pollDownloads() {
   }
 
   for (const dl of active) {
+    if (db.prepare('SELECT status FROM downloads WHERE id = ?').get(dl.id)?.status !== 'downloading') continue;
     const torrent = torrentMap.get(dl.torrent_hash);
 
     if (!torrent) {
@@ -327,10 +343,10 @@ async function pollDownloads() {
     const progress = Math.min(torrent.percentDone || 0, 1);
     db.prepare('UPDATE downloads SET progress = ? WHERE id = ?').run(progress, dl.id);
 
-    if (torrent.status === 6 || progress >= 1.0) {
+    if (progress >= 1.0) {
       db.prepare('UPDATE downloads SET status = ?, progress = ? WHERE id = ?').run('importing', 1, dl.id);
       db.prepare('UPDATE media SET download_status = ? WHERE id = ?').run('importing', dl.media_id);
-      importCompletedTorrent(dl).catch((err) => {
+      await importCompletedTorrent(dl).catch((err) => {
         console.error('Downloaded media import failed.');
         db.prepare('UPDATE downloads SET status = ?, error = ? WHERE id = ?').run('failed', 'Import failed', dl.id);
         db.prepare('UPDATE media SET download_status = ? WHERE id = ?').run('failed', dl.media_id);
@@ -366,4 +382,6 @@ module.exports = {
   startPolling,
   stopPolling,
   importCompletedTorrent,
+  pollDownloads,
+  findLargestVideoFile,
 };

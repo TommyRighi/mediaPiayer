@@ -67,6 +67,11 @@ export const api = {
     audioTracks: (id) => request('GET', `/media/${id}/audio-tracks`),
     episodeAudioTracks: (id) => request('GET', `/episodes/${id}/audio-tracks`),
   },
+  watchlist: {
+    list: () => request('GET', '/watchlist'),
+    add: id => request('PUT', `/watchlist/${id}`),
+    remove: id => request('DELETE', `/watchlist/${id}`),
+  },
   series: {
     episodes: (id) => request('GET', `/series/${id}/episodes`),
   },
@@ -90,12 +95,15 @@ export const api = {
     activate: (id) => request('POST', `/requests/${id}/activate`),
   },
   admin: {
+    settings: () => request('GET', '/admin/settings'),
+    updateSettings: values => request('PATCH', '/admin/settings', values),
     scan: () => request('POST', '/admin/scan'),
     clean: () => request('POST', '/admin/clean'),
     getStorage: () => request('GET', '/admin/storage'),
     setStorage: (dirs) => request('POST', '/admin/storage', { dirs }),
   },
   downloads: {
+    create: (title, magnetUri) => request('POST', '/downloads', { title, magnetUri }),
     start: (mediaId, magnetUri) => request('POST', `/media/${mediaId}/download`, { magnetUri }),
     status: (mediaId) => request('GET', `/media/${mediaId}/download`),
     cancel: (mediaId) => request('DELETE', `/media/${mediaId}/download`),

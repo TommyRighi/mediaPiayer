@@ -55,7 +55,7 @@ function formatDuration(seconds) {
 
 export default function MusicPage() {
   const [searchParams] = useSearchParams();
-  const { isAdmin } = useAuth();
+  const { isAdmin, downloadsEnabled } = useAuth();
   const player = usePlayer();
   const [albums, setAlbums] = useState([]);
   const [tracks, setTracks] = useState([]);
@@ -150,6 +150,11 @@ export default function MusicPage() {
     }
   };
 
+  const playRandom = async () => {
+    try { const tracks = await api.music.tracks.random(50); if (tracks.length) player.playQueue(tracks, 0); else setError('No tracks available.'); }
+    catch (err) { setError(err.message); }
+  };
+
   const handleScan = async () => {
     try { await api.music.scan(); setReload(n => n + 1); }
     catch (err) { setError(err.message); }
@@ -160,9 +165,11 @@ export default function MusicPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl md:text-3xl font-bold" style={{ color: 'var(--jf-text-primary)' }}>Music</h1>
         {isAdmin && (
-          <button onClick={handleScan} className="jf-btn-secondary text-sm">Scan Library</button>
+          <div className="flex flex-wrap gap-2"><Link to="/music/manage" className="jf-btn-secondary text-sm">Manage Music</Link><button onClick={handleScan} className="jf-btn-secondary text-sm">Scan Library</button></div>
         )}
       </div>
+
+      <button className="jf-btn-secondary mb-4" onClick={playRandom}>Play Random Mix</button>
 
       <div className="flex gap-1 mb-6 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {['albums', 'tracks', 'playlists', 'favorites'].map(t => (
@@ -177,7 +184,7 @@ export default function MusicPage() {
         ))}
       </div>
 
-      {isAdmin && (
+      {isAdmin && downloadsEnabled && (
         <div className="mb-8 p-4 rounded-lg" style={{ background: 'var(--jf-surface)' }}>
           <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--jf-text-primary)' }}>Download from YouTube</h3>
           <div className="flex gap-2 flex-wrap">

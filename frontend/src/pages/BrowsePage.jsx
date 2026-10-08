@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { api } from '../api';
 import MediaCard from '../components/MediaCard';
 import PageState from '../components/PageState';
 import { useAuth } from '../context/AuthContext';
 
-function MediaRow({ title, items, variant = 'portrait' }) {
+function MediaRow({ title, items, variant = 'portrait', grid = false }) {
   const scrollRef = useRef(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -23,15 +23,15 @@ function MediaRow({ title, items, variant = 'portrait' }) {
   }
 
   return (
-    <div className="mb-8">
+    <section className="mb-8">
       <div className="flex items-center justify-between px-4 md:px-8 mb-2">
-        <h3 className="text-lg font-medium" style={{ color: 'var(--jf-text-primary)' }}>{title}</h3>
+        <h2 className="text-lg font-medium" style={{ color: 'var(--jf-text-primary)' }}>{title}<span className="ml-2 text-xs" style={{ color: 'var(--jf-text-muted)' }}>{items.length}</span></h2>
       </div>
       <div className="relative group/row">
-        {canScrollLeft && (
+        {!grid && canScrollLeft && (
           <button
             aria-label={`Scroll ${title} left`} onClick={() => scrollBy(-1)}
-            className="absolute left-0 top-0 bottom-0 w-10 z-10 flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity"
+            className="absolute left-0 top-0 bottom-0 w-10 z-10 flex items-center justify-center jf-row-arrow"
             style={{ background: 'linear-gradient(to right, var(--jf-bg), transparent)' }}
           >
             <svg viewBox="0 0 24 24" width="28" height="28" fill="rgba(255,255,255,0.8)"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" /></svg>
@@ -39,31 +39,35 @@ function MediaRow({ title, items, variant = 'portrait' }) {
         )}
         <div
           ref={(el) => { scrollRef.current = el; if (el) updateScroll(el); }}
-          className="flex gap-2 overflow-x-auto px-4 md:px-8 pb-2 scroll-smooth"
+          className={grid ? "jf-media-grid px-4 md:px-8" : "jf-media-row flex gap-3 overflow-x-auto px-4 md:px-8 pb-2"}
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           onScroll={(e) => updateScroll(e.currentTarget)}
         >
           {items.map((item) => (
-            <MediaCard key={`${item.id}:${item.episode_id || "movie"}`} media={item} progress={item.watchProgress} variant={variant} />
+            <MediaCard key={`${item.id}:${item.episode_id || "movie"}`} media={item} progress={item.watchProgress} variant={variant} grid={grid} />
           ))}
         </div>
-        {canScrollRight && (
+        {!grid && canScrollRight && (
           <button
             aria-label={`Scroll ${title} right`} onClick={() => scrollBy(1)}
-            className="absolute right-0 top-0 bottom-0 w-10 z-10 flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity"
+            className="absolute right-0 top-0 bottom-0 w-10 z-10 flex items-center justify-center jf-row-arrow"
             style={{ background: 'linear-gradient(to left, var(--jf-bg), transparent)' }}
           >
             <svg viewBox="0 0 24 24" width="28" height="28" fill="rgba(255,255,255,0.8)"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" /></svg>
           </button>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
 export default function BrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const location = useLocation();
+  const searchRef = useRef(null);
+  const handledSearch = useRef(null);
+  const searchRequest = location.state?.searchRequest;
   const [media, setMedia] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +106,14 @@ export default function BrowsePage() {
     api.watch.history().then(data => setHistory(data.history)).catch(() => {});
   }, []);
 
-  const featured = media[0];
+  useEffect(() => {
+    if (searchRequest && handledSearch.current !== searchRequest && searchRef.current) {
+      searchRef.current.focus(); searchRef.current.select(); handledSearch.current = searchRequest;
+    }
+  }, [searchRequest, loading]);
+
+  const featured = media.find(item => item.file_path && item.file_size > 0 && !['pending', 'converting'].includes(item.transcode_status) && !['downloading', 'importing'].includes(item.download_status)) || media[0];
+  const featuredPlayable = featured?.file_path && featured.file_size > 0 && !['pending', 'converting'].includes(featured.transcode_status) && !['downloading', 'importing'].includes(featured.download_status);
   const movies = media.filter(m => m.type === 'movie');
   const series = media.filter(m => m.type === 'series');
   const continueWatching = history.filter(h => !h.completed && h.type);
@@ -128,13 +139,13 @@ export default function BrowsePage() {
                 <p className="text-sm md:text-lg mb-3 md:mb-4 line-clamp-3" style={{ color: 'var(--jf-text-secondary)' }}>{featured.description}</p>
               )}
               <div className="flex gap-3">
-                <Link
+                {featured.type === 'movie' && !featuredPlayable ? <span className="jf-btn-secondary opacity-60">{['pending', 'converting'].includes(featured.transcode_status) ? 'Preparing video…' : 'Video unavailable'}</span> : <Link
                   to={featured.type === 'movie' ? `/watch/${featured.id}` : `/series/${featured.id}`}
                   className="jf-btn-primary flex items-center gap-2"
                 >
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                  Play
-                </Link>
+                  {featured.type === 'movie' ? 'Play' : 'Browse episodes'}
+                </Link>}
                 <Link
                   to={featured.type === 'movie' ? `/movie/${featured.id}` : `/series/${featured.id}`}
                   className="jf-btn-secondary flex items-center gap-2"
@@ -154,13 +165,16 @@ export default function BrowsePage() {
             <div className="relative flex-1 w-full max-w-md">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="var(--jf-text-muted)" className="absolute left-3 top-1/2 -translate-y-1/2"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" /></svg>
               <input
-                type="text"
+                ref={searchRef}
+                type="search"
+                autoComplete="off"
                 placeholder="Search titles, genres..."
                 value={searchQuery}
                 aria-label="Search titles and genres"
                 onChange={(e) => { const next = new URLSearchParams(searchParams); if (e.target.value) next.set('q', e.target.value); else next.delete('q'); setPage(0); setSearchParams(next, { replace: true }); }}
-                className="jf-input" style={{ paddingLeft: 40 }}
+                className="jf-input" style={{ paddingLeft: 40, paddingRight: 42 }}
               />
+              {searchQuery && <button aria-label="Clear search" className="jf-clear-search" onClick={() => { const next = new URLSearchParams(searchParams); next.delete('q'); setPage(0); setSearchParams(next, { replace: true }); searchRef.current?.focus(); }}>×</button>}
             </div>
             <div className="flex gap-1">
               <Link
@@ -188,6 +202,10 @@ export default function BrowsePage() {
           </div>
         </div>
 
+        <div className="px-4 md:px-8 mb-5 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm" role="status" aria-live="polite" style={{ color: 'var(--jf-text-secondary)' }}>{loading ? 'Searching your library…' : searchQuery ? `${media.length}${hasMore ? '+' : ''} ${media.length === 1 && !hasMore ? 'result' : 'results'} for “${searchQuery}”` : 'Your library'}</p>
+          {!user?.history_enabled && !searchQuery && <Link to="/profile#privacy-heading" className="text-xs underline" style={{ color: 'var(--jf-text-secondary)' }}>Enable saved progress to continue watching</Link>}
+        </div>
         {continueWatching.length > 0 && !typeFilter && !searchQuery && (
           <MediaRow title="Continue Watching" items={continueWatching.map(h => ({
             ...h,
@@ -201,12 +219,13 @@ export default function BrowsePage() {
           }))} variant="backdrop" />
         )}
         {error && <div className="px-4 md:px-8 mb-4" role="alert">{error} <button className="jf-btn-secondary" onClick={retry}>Try again</button></div>}
-        {movies.length > 0 && <MediaRow title="Movies" items={movies} />}
-        {series.length > 0 && <MediaRow title="Series" items={series} />}
+        {movies.length > 0 && <MediaRow title="Movies" items={movies} grid={!!searchQuery || !!typeFilter} />}
+        {series.length > 0 && <MediaRow title="Series" items={series} grid={!!searchQuery || !!typeFilter} />}
         {hasMore && <div className="px-4 md:px-8 pb-8"><button className="jf-btn-secondary" disabled={loading || !!error} onClick={() => setPage(n => n + 1)}>{loading ? 'Loading…' : 'Load more'}</button></div>}
         {!loading && media.length === 0 && (
           <div className="text-center py-16" style={{ color: 'var(--jf-text-muted)' }}>
-            {searchQuery ? `No results for "${searchQuery}"` : `No ${typeFilter === 'series' ? 'series' : 'movies'} yet.`}
+            <h2 className="text-lg mb-2">{searchQuery ? `No results for “${searchQuery}”` : `No ${typeFilter === 'series' ? 'series' : 'movies'} yet.`}</h2>
+            {searchQuery && <><p className="text-sm mb-5">Try part of the title or a genre.</p><button className="jf-btn-secondary" onClick={() => { const next = new URLSearchParams(searchParams); next.delete('q'); setSearchParams(next, { replace: true }); searchRef.current?.focus(); }}>Clear search</button></>}
           </div>
         )}
       </div>

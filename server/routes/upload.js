@@ -229,10 +229,10 @@ async function uploadRoutes(fastify) {
       return reply.status(400).send({ error: 'Uploaded file must be an image' });
     }
 
-    let filePath = path.join(fileDir, `${media.id}-${imageType}.webp`);
+    let filePath = path.join(fileDir, `${media.id}-${imageType}-${nanoid()}.webp`);
     try {
       if (fileMimeType.toLowerCase() === 'image/gif') {
-        filePath = path.join(fileDir, `${media.id}-${imageType}.gif`);
+        filePath = path.join(fileDir, `${media.id}-${imageType}-${nanoid()}.gif`);
         fs.renameSync(tempPath, filePath);
       } else {
         await sharp(tempPath)
@@ -253,7 +253,7 @@ async function uploadRoutes(fastify) {
       removeImageWithVariants(previousPath);
     }
 
-    generateAllVariants(filePath, imageType);
+    await generateAllVariants(filePath, imageType);
 
     return { media: db.prepare('SELECT * FROM media WHERE id = ?').get(media.id) };
   });

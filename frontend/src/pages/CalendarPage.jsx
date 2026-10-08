@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import PageState from '../components/PageState';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 function formatDate(iso) {
   const d = new Date(iso);
@@ -30,11 +32,16 @@ function statusBadge(status) {
 }
 
 export default function CalendarPage() {
-  const { user } = useAuth();
+  const { user, socialEnabled, isAdmin } = useAuth();
+  const [params] = useSearchParams();
+  const mediaId = params.get('mediaId');
+  const [error, setError] = useState('');
+  const [cancelRequest, setCancelRequest] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
   const navigate = useNavigate();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useState(!!mediaId);
   const [mediaSearch, setMediaSearch] = useState('');
   const [mediaResults, setMediaResults] = useState([]);
   const [selectedMedia, setSelectedMedia] = useState(null);
@@ -44,19 +51,36 @@ export default function CalendarPage() {
   const [creating, setCreating] = useState(false);
 
   const fetchRequests = useCallback(async () => {
+    if (!socialEnabled) { setLoading(false); return; }
+    setError('');
     try {
       const data = await api.requests.list();
       setRequests(data.requests);
     } catch (err) {
-      console.error(err);
+      setError(err.message);
     }
     setLoading(false);
-  }, []);
+  }, [socialEnabled]);
 
   useEffect(() => {
     const timer = setTimeout(fetchRequests, 0);
     return () => clearTimeout(timer);
   }, [fetchRequests]);
+
+  useEffect(() => {
+    if (!mediaId || !socialEnabled) return;
+    let cancelled = false;
+    api.media.get(mediaId).then(data => { if (!cancelled) { setSelectedMedia(data.media); setShowCreate(true); } }).catch(err => { if (!cancelled) setError(err.message); });
+    return () => { cancelled = true; };
+  }, [mediaId, socialEnabled]);
+
+  async function selectMedia(item) {
+    try {
+      const data = await api.media.get(item.id);
+      setSelectedMedia(data.media);
+      setSelectedEpisode(null);
+    } catch (err) { setError(err.message); }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -77,7 +101,7 @@ export default function CalendarPage() {
       await api.requests.respond(requestId, response);
       fetchRequests();
     } catch (err) {
-      alert(err.message);
+      setError(err.message);
     }
   }
 
@@ -86,29 +110,33 @@ export default function CalendarPage() {
       const data = await api.requests.activate(requestId);
       navigate(`/scene/${data.party.id}`);
     } catch (err) {
-      alert(err.message);
+      setError(err.message);
     }
   }
 
   async function handleCancel(requestId) {
-    if (!confirm('Cancel this request?')) return;
+    setCancelling(true); setError('');
     try {
       await api.requests.cancel(requestId);
+      setCancelRequest(null);
       fetchRequests();
     } catch (err) {
-      alert(err.message);
+      setCancelRequest(null);
+      setError(err.message);
     }
+    finally { setCancelling(false); }
   }
 
   async function handleCreate() {
     if (!selectedMedia) return;
+    if (selectedMedia.type === 'series' && !selectedEpisode) { setError('Choose an episode to schedule a screening.'); return; }
     if (!scheduledDate || !scheduledTime) {
-      alert('Please set a date and time');
+      setError('Choose a date and time for your screening.');
       return;
     }
     const dateTime = new Date(`${scheduledDate}T${scheduledTime}`);
     if (isNaN(dateTime.getTime()) || dateTime <= new Date()) {
-      alert('Scheduled time must be in the future');
+      setError('Choose a time in the future.');
       return;
     }
     setCreating(true);
@@ -122,27 +150,33 @@ export default function CalendarPage() {
       setScheduledTime('');
       fetchRequests();
     } catch (err) {
-      alert(err.message);
+      setError(err.message);
     }
     setCreating(false);
   }
 
   const grouped = {};
   requests.forEach((r) => {
-    const day = formatDate(r.scheduled_at);
+    const date = new Date(r.scheduled_at);
+    const day = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
     if (!grouped[day]) grouped[day] = [];
     grouped[day].push(r);
   });
 
+  if (!socialEnabled) return <PageState title="Calendar is disabled" message="Shared screenings and watch parties need to be enabled by an administrator.">{isAdmin && <Link className="jf-btn-primary" to="/settings">Settings</Link>}</PageState>;
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-6">
+      {cancelRequest && <ConfirmDialog title="Cancel screening?" message={`Cancel the scheduled screening of “${cancelRequest.media_title}”? Other participants will see it as cancelled.`} confirmLabel="Cancel screening" busy={cancelling} onCancel={() => setCancelRequest(null)} onConfirm={() => handleCancel(cancelRequest.id)} />}
+      <div className="flex flex-wrap gap-3 items-center justify-between mb-6">
         <h1 className="text-2xl font-bold" style={{ color: 'var(--jf-text-primary)' }}>Watch Calendar</h1>
         <button onClick={() => setShowCreate(!showCreate)} className="jf-btn-primary flex items-center gap-2">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>
           New Request
         </button>
       </div>
+
+      {error && <div role="alert" className="mb-4"><p>{error}</p><button className="jf-btn-secondary mt-2" onClick={fetchRequests}>Try again</button></div>}
 
       {showCreate && (
         <div className="rounded-lg p-4 mb-6" style={{ background: 'var(--jf-surface)' }}>
@@ -152,6 +186,7 @@ export default function CalendarPage() {
             <div>
               <input
                 type="text"
+                aria-label="Search media"
                 value={mediaSearch}
                 onChange={(e) => setMediaSearch(e.target.value)}
                 placeholder="Search media..."
@@ -162,7 +197,7 @@ export default function CalendarPage() {
                   {mediaResults.map((m) => (
                     <button
                       key={m.id}
-                      onClick={() => { setSelectedMedia(m); setSelectedEpisode(null); }}
+                      onClick={() => selectMedia(m)}
                       className="flex items-center gap-3 p-2 rounded text-left hover:bg-white/10 transition"
                     >
                       <span style={{ color: 'var(--jf-text-primary)' }} className="font-medium">{m.title}</span>
@@ -192,7 +227,7 @@ export default function CalendarPage() {
               {selectedMedia.type === 'series' && selectedMedia.seasons && (
                 <div className="mb-4">
                   <p className="text-sm mb-2" style={{ color: 'var(--jf-text-secondary)' }}>
-                    Episode (optional):
+                    Episode:
                   </p>
                   <select
                     value={selectedEpisode?.id || ''}
@@ -200,9 +235,10 @@ export default function CalendarPage() {
                       const ep = Object.values(selectedMedia.seasons).flat().find(ep => ep.id === e.target.value);
                       setSelectedEpisode(ep || null);
                     }}
+                    aria-label="Episode"
                     className="jf-input w-full"
                   >
-                    <option value="">Any</option>
+                    <option value="">Choose an episode</option>
                     {Object.keys(selectedMedia.seasons).sort((a, b) => a - b).map((s) =>
                       selectedMedia.seasons[s].map((ep) => (
                         <option key={ep.id} value={ep.id}>
@@ -219,16 +255,18 @@ export default function CalendarPage() {
                   <label className="text-sm block mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Date</label>
                   <input
                     type="date"
+                    aria-label="Date"
                     value={scheduledDate}
                     onChange={(e) => setScheduledDate(e.target.value)}
                     className="jf-input w-full"
-                    min={new Date().toISOString().split('T')[0]}
+                    min={new Date().toLocaleDateString('en-CA')}
                   />
                 </div>
                 <div className="flex-1">
                   <label className="text-sm block mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Time</label>
                   <input
                     type="time"
+                    aria-label="Time"
                     value={scheduledTime}
                     onChange={(e) => setScheduledTime(e.target.value)}
                     className="jf-input w-full"
@@ -255,7 +293,7 @@ export default function CalendarPage() {
         <div className="flex flex-col gap-8">
           {Object.entries(grouped).map(([day, dayRequests]) => (
             <div key={day}>
-              <h2 className="text-sm font-medium uppercase mb-3" style={{ color: 'var(--jf-text-secondary)' }}>{day}</h2>
+              <h2 className="text-sm font-medium uppercase mb-3" style={{ color: 'var(--jf-text-secondary)' }}>{formatDate(dayRequests[0].scheduled_at)}</h2>
               <div className="flex flex-col gap-2">
                 {dayRequests.map((r) => {
                   const isActive = r.status === 'active' && r.party_id;
@@ -286,7 +324,7 @@ export default function CalendarPage() {
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex flex-wrap items-center gap-2">
                         {isActive ? (
                           <button onClick={() => navigate(`/scene/${r.party_id}`)} className="jf-btn-primary text-sm">
                             Join Room
@@ -326,7 +364,7 @@ export default function CalendarPage() {
                               </>
                             )}
                             {r.created_by === user.id && (
-                              <button onClick={() => handleCancel(r.id)} className="text-sm px-2 py-1 rounded hover:bg-white/10" style={{ color: 'var(--jf-error)' }}>
+                              <button onClick={() => setCancelRequest(r)} className="text-sm px-2 py-1 rounded hover:bg-white/10" style={{ color: 'var(--jf-error)' }}>
                                 Cancel
                               </button>
                             )}

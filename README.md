@@ -287,3 +287,53 @@ Sessions use HttpOnly cookies; logout revokes them on the server. Viewing histor
 is off by default, with explicit opt-in in Profile. Social features and downloaders
 are off by default. Existing progress and backups are not automatically destroyed.
 The Node test suite is available with `npm test`; frontend lint runs in `frontend/`.
+
+### Interface features
+
+The sidebar includes Calendar. Enable shared screenings and watch parties in
+**Settings** with an administrator account. These settings are stored in SQLite
+and override the initial `SOCIAL_ENABLED` and `ENABLE_DOWNLOADS` environment values.
+Viewing history remains a separate personal preference under Profile.
+
+Administrators can use **Music → Manage Music** to create and edit albums, upload
+audio, edit track metadata and remove library entries. Playlist tracks can be
+reordered with the up/down buttons, and Music offers a random mix.
+
+**Downloads** shows video downloads and YouTube music imports. Enable downloads
+in Settings and configure Transmission or install yt-dlp before importing.
+Upload, Admin, Settings, Downloads and Manage Music require an administrator;
+creating an account with an invite gives viewer access.
+
+My List saves movies and series separately for each account and is independent of
+viewing history. Use the + button on library cards or the My List button in details.
+Administrators can select **Upload cover** or **Cover from video frame** in details.
+Frame capture uses the browser video decoder, then opens the image crop editor;
+HLS and series episode selection are supported. If a video cannot be decoded in
+the browser, upload an image instead. Image replacement regenerates thumbnails.
+
+
+### Administrator torrent downloads
+
+Only administrators can start, inspect or cancel torrent jobs. Open **Downloads**,
+enter a movie title and magnet link, then start. Viewers can watch after the entire
+download and import finish. If conversion is required, playback waits for it too.
+Imports currently support one movie per torrent, selecting its largest complete
+video file. Season packs and `.torrent` uploads are not supported by this form.
+
+For local OrbStack setup, configure these values in the gitignored `.env`:
+
+```dotenv
+TRANSMISSION_USER=mediapiayer
+TRANSMISSION_PASSWORD=use-a-long-random-password
+TRANSMISSION_UID=501
+TRANSMISSION_GID=20
+TRANSMISSION_DOWNLOAD_DIR=/absolute/path/to/mediaPiayer/media/.downloads
+TRANSMISSION_URL=http://mediapiayer:use-a-long-random-password@127.0.0.1:9091/transmission/rpc
+```
+
+Use your machine's UID/GID from `id -u` and `id -g`. For URL credentials, encode
+special characters. Start `docker compose -f compose.transmission.yml up -d`,
+restart the backend, and enable Downloads in administrator Settings. The daemon
+RPC port is bound to localhost. The host and container use the same absolute
+folder path, with a separate subfolder per job. Stop the daemon with
+`docker compose -f compose.transmission.yml down`.

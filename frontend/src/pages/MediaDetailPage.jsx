@@ -3,12 +3,14 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { lazy, Suspense } from 'react';
+import WatchlistButton from '../components/WatchlistButton';
 import PageState from '../components/PageState';
+const FrameCoverDialog = lazy(() => import('../components/FrameCoverDialog'));
 const ImageCropModal = lazy(() => import('../components/ImageCropModal'));
 
 export default function MediaDetailPage() {
   const { id } = useParams();
-  const { isAdmin, socialEnabled } = useAuth();
+  const { isAdmin, socialEnabled, downloadsEnabled } = useAuth();
   const navigate = useNavigate();
   const [media, setMedia] = useState(null);
   const [error, setError] = useState('');
@@ -26,6 +28,20 @@ export default function MediaDetailPage() {
   const [downloadStarting, setDownloadStarting] = useState(false);
   const downloadPollRef = useRef(null);
   const [cropModal, setCropModal] = useState(null);
+  const [frameType, setFrameType] = useState(null);
+  const [imageMessage, setImageMessage] = useState('');
+
+  useEffect(() => {
+    if (!['downloading', 'importing'].includes(media?.download_status) && !['pending', 'converting'].includes(media?.transcode_status)) return;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      try {
+        const data = await api.media.get(id, true);
+        if (!cancelled) setMedia(data.media);
+      } catch { /* The next refresh retries without interrupting the page. */ }
+    }, 5000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [id, media?.download_status, media?.transcode_status]);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,7 +81,7 @@ export default function MediaDetailPage() {
       });
     }).catch(err => { if (!cancelled) setError(err.message); });
 
-    if (isAdmin) {
+    if (isAdmin && downloadsEnabled) {
       poll();
     }
 
@@ -73,7 +89,7 @@ export default function MediaDetailPage() {
       cancelled = true;
       if (downloadPollRef.current) clearTimeout(downloadPollRef.current);
     };
-  }, [id, isAdmin, reload]);
+  }, [id, isAdmin, downloadsEnabled, reload]);
 
   async function handleStartDownload() {
     if (!magnetUri.trim()) return;
@@ -115,9 +131,9 @@ export default function MediaDetailPage() {
     catch (err) { setError(err.message); setBusy(false); }
   }
 
-  async function handleStartParty() {
+  async function handleStartParty(episodeId = null) {
     try {
-      const { party } = await api.parties.create(media.id, null);
+      const { party } = await api.parties.create(media.id, episodeId);
       navigate(`/scene/${party.id}`);
     } catch (err) {
       setError(err.message);
@@ -127,7 +143,10 @@ export default function MediaDetailPage() {
   function handleImageFileSelect(e, imageType) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith('image/')) { setError('Choose an image file.'); e.target.value = ''; return; }
+    if (file.size > 20 * 1024 * 1024) { setError('Choose an image smaller than 20 MB.'); e.target.value = ''; return; }
     const reader = new FileReader();
+    reader.onerror = () => setError('Unable to read this image.');
     reader.onload = () => {
       setCropModal({ imageSrc: reader.result, imageType });
     };
@@ -140,11 +159,12 @@ export default function MediaDetailPage() {
     setCropModal(null);
     setUploadingImageType(imageType);
     setImageUploadProgress(0);
+    setError(''); setImageMessage('');
     try {
       const formData = new FormData();
       formData.append('type', imageType);
       formData.append('file', croppedBlob, `${imageType}.webp`);
-      const data = await new Promise((resolve, reject) => {
+      await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', `/api/media/${id}/image`);
         xhr.upload.onprogress = (ev) => {
@@ -170,7 +190,9 @@ export default function MediaDetailPage() {
         xhr.ontimeout = () => reject(new Error('Upload timed out — the server may still be processing your image. Try refreshing the page.'));
         xhr.send(formData);
       });
-      setMedia(data.media);
+      const refreshed = await api.media.get(id, true);
+      setMedia(refreshed.media);
+      setImageMessage(imageType === 'poster' ? 'Cover saved.' : 'Background saved.');
       setImageVersion((v) => v + 1);
     } catch (err) {
       setError(err.message);
@@ -207,6 +229,8 @@ export default function MediaDetailPage() {
     return <PageState busy={!error} title={error ? 'Unable to load this title' : 'Loading details'} message={error} retry={error ? () => { setError(''); setReload(n => n + 1); } : undefined} />;
   }
 
+  const downloadPending = ['downloading', 'importing'].includes(media.download_status);
+  const playbackBlocked = media.type === 'movie' && (downloadPending || !media.file_path || media.file_size === 0 || ['pending', 'converting'].includes(media.transcode_status));
   const isConverting = media.transcode_status === 'pending' || media.transcode_status === 'converting';
   const isConvertFailed = media.transcode_status === 'failed';
 
@@ -232,6 +256,12 @@ export default function MediaDetailPage() {
             </div>
 
             <div className="flex-1 pb-8 text-center md:text-left">
+              {imageMessage && <p role="status" className="text-sm mb-4">{imageMessage}</p>}
+              {isAdmin && !editing && <div className="flex flex-wrap gap-2 justify-center md:justify-start mb-5">
+                <label className="jf-btn-secondary cursor-pointer"><span>{uploadingImageType === 'poster' ? 'Saving cover…' : 'Upload cover'}</span><input aria-label="Upload cover image" className="sr-only" type="file" accept="image/*" disabled={!!uploadingImageType} onChange={event => handleImageFileSelect(event, 'poster')} /></label>
+                <button className="jf-btn-secondary" disabled={!!uploadingImageType || (media.type === 'movie' && (!media.file_path || media.file_size === 0 || ['pending', 'converting'].includes(media.transcode_status)))} onClick={() => setFrameType('poster')}>Cover from video frame</button>
+              </div>}
+
               {editing ? (
                 <div className="flex flex-col gap-3">
                   <input type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="jf-input" />
@@ -245,6 +275,8 @@ export default function MediaDetailPage() {
                     <button onClick={() => setEditing(false)} className="jf-btn-secondary">Cancel</button>
                   </div>
                   <div className="flex flex-wrap gap-3 mt-2">
+                    <button className="jf-btn-outline" disabled={!!uploadingImageType || (media.type === 'movie' && (!media.file_path || media.file_size === 0 || ['pending', 'converting'].includes(media.transcode_status)))} onClick={() => setFrameType('poster')}>Cover from frame</button>
+                    <button className="jf-btn-outline" disabled={!!uploadingImageType || (media.type === 'movie' && (!media.file_path || media.file_size === 0 || ['pending', 'converting'].includes(media.transcode_status)))} onClick={() => setFrameType('backdrop')}>Background from frame</button>
                     <label className="jf-btn-outline cursor-pointer flex items-center gap-2" style={{ fontSize: '13px' }}>
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" /></svg>
                       {uploadingImageType === 'poster' ? 'Uploading...' : 'Edit Poster'}
@@ -261,7 +293,7 @@ export default function MediaDetailPage() {
                       <input type="file" accept=".srt,.vtt" onChange={(e) => handleSubtitleUpload(e, null)} className="hidden" />
                     </label>
                   </div>
-                  {downloadAvailable !== false && (
+                  {downloadsEnabled && downloadAvailable && media.type === 'movie' && (
                     <div className="mt-3 rounded-lg p-3" style={{ background: 'var(--jf-surface)' }}>
                       <div className="flex items-center gap-2 mb-2" style={{ color: 'var(--jf-text-secondary)' }}>
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z" /></svg>
@@ -310,7 +342,7 @@ export default function MediaDetailPage() {
                       )}
                     </div>
                   )}
-                  {!downloadAvailable && isAdmin && (
+                  {downloadsEnabled && !downloadAvailable && isAdmin && (
                     <div className="mt-2 text-xs" style={{ color: 'var(--jf-text-muted)' }}>
                       Torrent download is not available on this server.
                     </div>
@@ -379,15 +411,17 @@ export default function MediaDetailPage() {
                   )}
                   <div className="flex items-center justify-center md:justify-start flex-wrap gap-3">
                     <Link
-                      to={media.type === 'movie' ? (isConverting ? '#' : `/watch/${media.id}`) : media.type === 'series' ? `/series/${media.id}` : '#'}
-                      className={`jf-btn-primary flex items-center gap-2 ${isConverting ? 'opacity-50 pointer-events-none' : ''}`}
-                      onClick={(e) => { if (isConverting) e.preventDefault(); }}
+                      to={media.type === 'movie' ? (playbackBlocked ? '#' : `/watch/${media.id}`) : media.type === 'series' ? `/series/${media.id}` : '#'}
+                      className={`jf-btn-primary flex items-center gap-2 ${playbackBlocked ? 'opacity-50 pointer-events-none' : ''}`}
+                      onClick={(e) => { if (playbackBlocked) e.preventDefault(); }}
                     >
                       <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                      {media.watchProgress?.progress_seconds > 0 && !media.watchProgress.completed ? 'Resume' : 'Play'}
+                      {playbackBlocked ? (downloadPending ? 'Available after download' : 'Video unavailable or preparing') : media.watchProgress?.progress_seconds > 0 && !media.watchProgress.completed ? 'Resume' : 'Play'}
                     </Link>
-                    {media.type === 'movie' && media.watchProgress?.progress_seconds > 0 && !isConverting && <Link to={`/watch/${media.id}?start=0`} className="jf-btn-secondary">Start over</Link>}
-                    {socialEnabled && <button disabled={isConverting} onClick={handleStartParty} className="jf-btn-secondary flex items-center gap-2">
+                    {media.type === 'movie' && media.watchProgress?.progress_seconds > 0 && !playbackBlocked && <Link to={`/watch/${media.id}?start=0`} className="jf-btn-secondary">Start over</Link>}
+                    <WatchlistButton media={media} />
+                    {socialEnabled && <Link to={`/calendar?mediaId=${media.id}`} className="jf-btn-secondary">Schedule screening</Link>}
+                    {socialEnabled && media.type === 'movie' && <button disabled={playbackBlocked} onClick={() => handleStartParty()} className="jf-btn-secondary flex items-center gap-2">
                       <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" /></svg>
                       Watch Party
                     </button>}
@@ -427,8 +461,8 @@ export default function MediaDetailPage() {
                     {media.seasons[seasonNum].map((ep) => {
                       const epConverting = ep.transcode_status === 'pending' || ep.transcode_status === 'converting';
                       return (
+                      <div key={ep.id}>
                       <Link
-                        key={ep.id}
                         to={epConverting ? '#' : `/watch/${media.id}/${ep.id}`}
                         className={`flex items-center gap-3 p-3 md:p-4 rounded transition group ${epConverting ? 'opacity-50 pointer-events-none' : ''}`}
                         style={{ background: 'var(--jf-surface)' }}
@@ -479,6 +513,8 @@ export default function MediaDetailPage() {
                           </label>
                         )}
                       </Link>
+                      {socialEnabled && <button disabled={epConverting || busy} onClick={() => handleStartParty(ep.id)} className="jf-btn-secondary text-sm mt-2" aria-label={`Watch ${ep.title} together`}>Watch Party</button>}
+                      </div>
                       );
                     })}
                   </div>
@@ -489,6 +525,7 @@ export default function MediaDetailPage() {
         </div>
       </div>
 
+      {frameType && <Suspense fallback={<div role="status">Loading frame selector…</div>}><FrameCoverDialog media={media} onClose={() => setFrameType(null)} onFrame={imageSrc => { setCropModal({ imageSrc, imageType: frameType }); setFrameType(null); }} /></Suspense>}
       {cropModal && (
         <Suspense fallback={<div role="status">Loading image editor…</div>}><ImageCropModal
           imageSrc={cropModal.imageSrc}

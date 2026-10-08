@@ -6,9 +6,15 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [socialEnabled, setSocialEnabled] = useState(false);
+  const [features, setFeatures] = useState({ socialEnabled: false, downloadsEnabled: false });
+  const { socialEnabled, downloadsEnabled } = features;
 
-  useEffect(() => { api.auth.config().then(data => setSocialEnabled(data.socialEnabled === true)).catch(() => {}); }, []);
+  async function refreshFeatures() {
+    const data = await api.auth.config();
+    setFeatures({ socialEnabled: data.socialEnabled === true, downloadsEnabled: data.downloadsEnabled === true });
+  }
+
+  useEffect(() => { api.auth.config().then(data => setFeatures({ socialEnabled: data.socialEnabled === true, downloadsEnabled: data.downloadsEnabled === true })).catch(() => {}); }, []);
 
   useEffect(() => {
     (async () => {
@@ -82,7 +88,7 @@ export function AuthProvider({ children }) {
   const isAdmin = user?.role === 'admin';
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile, updatePrivacy, changePassword, isAdmin, socialEnabled }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile, updatePrivacy, changePassword, isAdmin, socialEnabled, downloadsEnabled, refreshFeatures }}>
       {children}
     </AuthContext.Provider>
   );

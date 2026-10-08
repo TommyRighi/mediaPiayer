@@ -1,0 +1,16 @@
+services:
+  transmission:
+    image: lscr.io/linuxserver/transmission@sha256:4813745e2c721997d8849f5718786fd4406b3c656fbef479f87a161e51383cbd
+    environment:
+      PUID: ${TRANSMISSION_UID:-1000}
+      PGID: ${TRANSMISSION_GID:-1000}
+      TZ: Europe/Rome
+      USER: ${TRANSMISSION_USER:?Set TRANSMISSION_USER in .env}
+      PASS: ${TRANSMISSION_PASSWORD:?Set TRANSMISSION_PASSWORD in .env}
+    volumes:
+      - ./data/transmission:/config
+      # Keep the same absolute path so the host backend can import the files.
+      - ${TRANSMISSION_DOWNLOAD_DIR:?Set an absolute download path in .env}:${TRANSMISSION_DOWNLOAD_DIR}
+    ports:
+      - 127.0.0.1:9091:9091
+    restart: unless-stopped

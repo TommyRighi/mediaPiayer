@@ -210,6 +210,9 @@ async function mediaRoutes(fastify) {
   fastify.get('/api/media/:id/video', { preHandler: mediaAuth }, async (request, reply) => {
     const db = getDb();
     const media = db.prepare('SELECT * FROM media WHERE id = ?').get(request.params.id);
+    if (media && ['downloading', 'importing'].includes(media.download_status)) {
+      return reply.code(409).send({ error: 'Wait for the download and import to finish before watching.' });
+    }
     if (!media || media.type !== 'movie' || !media.file_path) {
       return reply.status(404).send({ error: 'Video not found' });
     }
@@ -223,7 +226,13 @@ async function mediaRoutes(fastify) {
 
   fastify.get('/api/media/:id/hls/*', { preHandler: mediaAuth }, async (request, reply) => {
     const db = getDb();
-    const media = db.prepare('SELECT file_path FROM media WHERE id = ?').get(request.params.id);
+    const media = db.prepare('SELECT file_path, download_status, transcode_status FROM media WHERE id = ?').get(request.params.id);
+    if (media && ['downloading', 'importing'].includes(media.download_status)) {
+      return reply.code(409).send({ error: 'Wait for the download and import to finish before watching.' });
+    }
+    if (media && ['pending', 'converting'].includes(media.transcode_status)) {
+      return reply.code(503).send({ error: 'Video is being prepared. Please try again shortly.' });
+    }
     if (!media || !media.file_path) {
       return reply.status(404).send({ error: 'HLS not found' });
     }
@@ -339,7 +348,7 @@ async function mediaRoutes(fastify) {
 
     if (['pending', 'converting'].includes(media.transcode_status) ||
         db.prepare("SELECT id FROM episodes WHERE series_id = ? AND transcode_status IN ('pending', 'converting')").get(media.id) ||
-        db.prepare("SELECT id FROM downloads WHERE media_id = ? AND status IN ('downloading', 'importing')").get(media.id)) {
+        db.prepare("SELECT id FROM downloads WHERE media_id = ? AND status IN ('downloading', 'importing', 'cancelling')").get(media.id)) {
       return reply.code(409).send({ error: 'Wait for preparation or download to finish before deleting this title.' });
     }
     const episodeFiles = db.prepare('SELECT file_path FROM episodes WHERE series_id = ?').all(media.id);

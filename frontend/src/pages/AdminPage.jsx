@@ -146,6 +146,11 @@ export default function AdminPage() {
     <div className="min-h-screen pt-20 px-4 md:px-8 pb-16">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-8">Admin Panel</h1>
+        <div className="flex flex-wrap gap-3 mb-6">
+          <Link to="/settings" className="jf-btn-secondary">Settings</Link>
+          <Link to="/downloads" className="jf-btn-secondary">Downloads</Link>
+          <Link to="/music/manage" className="jf-btn-secondary">Manage Music</Link>
+        </div>
 
         <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 mb-8">
           <h2 className="text-lg font-medium mb-2">Storage</h2>

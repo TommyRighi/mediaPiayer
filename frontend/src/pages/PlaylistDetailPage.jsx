@@ -21,6 +21,8 @@ export default function PlaylistDetailPage() {
   const [editDesc, setEditDesc] = useState('');
   const [addingTracks, setAddingTracks] = useState(false);
   const [allTracks, setAllTracks] = useState([]);
+  const [reordering, setReordering] = useState(false);
+  const [error, setError] = useState('');
   const [favorites, setFavorites] = useState(new Set());
 
   const loadPlaylist = useCallback(() => {
@@ -78,6 +80,17 @@ export default function PlaylistDetailPage() {
     loadPlaylist();
   };
 
+  async function moveTrack(index, direction) {
+    const ordered = [...playlist.tracks];
+    const next = index + direction;
+    if (next < 0 || next >= ordered.length) return;
+    [ordered[index], ordered[next]] = [ordered[next], ordered[index]];
+    setReordering(true); setError('');
+    try { await api.music.playlists.reorder(id, ordered.map(track => track.id)); setPlaylist(previous => ({ ...previous, tracks: ordered })); }
+    catch (err) { setError(err.message); }
+    finally { setReordering(false); }
+  }
+
   if (loading) return <div className="text-center py-16" style={{ color: 'var(--jf-text-muted)' }}>Loading...</div>;
   if (!playlist) return <div className="text-center py-16" style={{ color: 'var(--jf-text-muted)' }}>Playlist not found</div>;
 
@@ -126,6 +139,7 @@ export default function PlaylistDetailPage() {
       </div>
 
       <div className="px-4 md:px-8">
+        {error && <p role="alert" className="mb-4">{error}</p>}
         {tracks.length === 0 ? (
           <div className="text-center py-16" style={{ color: 'var(--jf-text-muted)' }}>
             This playlist is empty. Add some tracks!
@@ -137,6 +151,10 @@ export default function PlaylistDetailPage() {
               className="flex items-center gap-3 px-3 py-2 rounded group hover:bg-white/5 transition-colors cursor-pointer"
 
             >
+              <div className="flex flex-col gap-1">
+                <button disabled={reordering || idx === 0} aria-label={`Move ${track.title} up`} onClick={() => moveTrack(idx, -1)} className="disabled:opacity-30">↑</button>
+                <button disabled={reordering || idx === tracks.length - 1} aria-label={`Move ${track.title} down`} onClick={() => moveTrack(idx, 1)} className="disabled:opacity-30">↓</button>
+              </div>
               <span className="w-8 text-center text-sm" style={{ color: 'var(--jf-text-muted)' }}>{idx + 1}</span>
               <button
                 aria-label={favorites.has(track.id) ? "Remove from favorites" : "Add to favorites"}
