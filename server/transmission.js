@@ -331,7 +331,7 @@ async function pollDownloads() {
       db.prepare('UPDATE downloads SET status = ?, progress = ? WHERE id = ?').run('importing', 1, dl.id);
       db.prepare('UPDATE media SET download_status = ? WHERE id = ?').run('importing', dl.media_id);
       importCompletedTorrent(dl).catch((err) => {
-        console.error('Import failed for', dl.media_id, err.message);
+        console.error('Downloaded media import failed.');
         db.prepare('UPDATE downloads SET status = ?, error = ? WHERE id = ?').run('failed', 'Import failed', dl.id);
         db.prepare('UPDATE media SET download_status = ? WHERE id = ?').run('failed', dl.media_id);
       });

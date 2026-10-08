@@ -1,0 +1,101 @@
+const { test, after } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createHash } = require('node:crypto');
+const temp = fs.mkdtempSync(path.join(os.tmpdir(),'mediapiayer-security-'));
+process.env.DATABASE_PATH = path.join(temp,'test.db');
+process.env.MEDIA_DIRS = temp;
+process.env.JWT_SECRET = 'test-security-secret-long-enough-for-production';
+process.env.PUBLIC_ORIGIN = 'https://pi.tail.ts.net';
+const Fastify = require('fastify');
+const { securityHooks, logSerializers } = require('../server/security');
+const { getDb } = require('../server/db');
+const { createToken, createMediaToken, hashPassword, authenticate } = require('../server/auth');
+const db = getDb();
+const admin = {id:'admin',email:'admin@example.invalid',token_version:0};
+const viewer = {id:'viewer',email:'viewer@example.invalid',token_version:0};
+for (const u of [admin,viewer]) db.prepare('INSERT INTO users(id,email,password_hash,display_name,role) VALUES(?,?,?,?,?)').run(u.id,u.email,'unused',u.id,u.id==='admin'?'admin':'viewer');
+db.prepare('INSERT INTO media(id,title,type,duration) VALUES(?,?,?,?)').run('movie','Private fixture','movie',120);
+const app = Fastify(); securityHooks(app);
+app.register(require('@fastify/websocket'));
+app.register(require('../server/routes/auth'));
+app.register(require('../server/routes/watch'));
+app.register(require('../server/routes/media'));
+app.register(require('../server/routes/music/index'));
+app.register(require('../server/routes/parties'));
+const cookie = token => `mp_session=${token}`;
+const origin = {origin:process.env.PUBLIC_ORIGIN};
+const headers = {authorization:`Bearer ${createToken(admin)}`};
+after(async () => { await app.close(); db.close(); fs.rmSync(temp,{recursive:true,force:true}); });
+
+test('private accounts never write video or music progress and do not advertise presence',async () => {
+  const result = await app.inject({method:'POST',url:'/api/watch/progress',headers,payload:{mediaId:'movie',seconds:60}});
+  assert.equal(result.statusCode,200); assert.equal(result.json().private,true);
+  assert.equal(db.prepare('SELECT count(*) n FROM watch_progress').get().n,0);
+  const music = await app.inject({method:'POST',url:'/api/music/progress',headers,payload:{track_id:'unknown',progress_seconds:50}});
+  assert.equal(music.json().private,true); assert.equal(db.prepare('SELECT count(*) n FROM track_progress').get().n,0);
+  assert.deepEqual((await app.inject({url:'/api/watch/history',headers})).json(),{history:[]});
+  assert.deepEqual((await app.inject({url:'/api/auth/online',headers})).json(),{users:[]});
+});
+test('history requires explicit opt-in and disabling removes old progress',async () => {
+  await app.inject({method:'PATCH',url:'/api/auth/privacy',headers,payload:{historyEnabled:true}});
+  await app.inject({method:'POST',url:'/api/watch/progress',headers,payload:{mediaId:'movie',seconds:42}});
+  assert.equal(db.prepare('SELECT count(*) n FROM watch_progress').get().n,1);
+  await app.inject({method:'PATCH',url:'/api/auth/privacy',headers,payload:{historyEnabled:false}});
+  assert.equal(db.prepare('SELECT count(*) n FROM watch_progress').get().n,0);
+});
+test('cross-origin cookie changes, login CSRF, and social features fail closed',async () => {
+  const token=createToken(viewer);
+  const bad=await app.inject({method:'PATCH',url:'/api/auth/profile',headers:{cookie:cookie(token),origin:'https://evil.example'},payload:{displayName:'Changed'}});
+  assert.equal(bad.statusCode,403);
+  assert.equal((await app.inject({method:'POST',url:'/api/auth/login',payload:{email:'x',password:'x'}})).statusCode,403);
+  assert.equal((await app.inject({url:'/api/parties/unknown',headers})).statusCode,403);
+});
+test('session and media cookies are revoked on logout; query tokens do not authorize media',async () => {
+  const token=createToken(viewer); const user=authenticate(token);
+  const media=createMediaToken(user);
+  assert.equal((await app.inject({url:'/api/media/movie/video?token='+media})).statusCode,401);
+  const logout=await app.inject({method:'POST',url:'/api/auth/logout',headers:{...origin,cookie:cookie(token)}});
+  assert.equal(logout.statusCode,200);
+  assert.equal((await app.inject({url:'/api/auth/me',headers:{cookie:cookie(token)}})).statusCode,401);
+  assert.equal((await app.inject({url:'/api/media/movie/video',headers:{cookie:`media_access=${media}`}})).statusCode,401);
+});
+test('registration needs a one-use invitation and cannot become admin',async () => {
+  const payload={email:'friend@example.invalid',password:'a-long-test-password',displayName:'Friend'};
+  assert.equal((await app.inject({method:'POST',url:'/api/auth/register',headers:origin,payload})).statusCode,403);
+  const invite=(await app.inject({method:'POST',url:'/api/auth/invites',headers})).json();
+  assert.ok(db.prepare('SELECT code_hash FROM auth_invites WHERE code_hash=?').get(createHash('sha256').update(invite.code).digest('hex')));
+  const response=await app.inject({method:'POST',url:'/api/auth/register',headers:origin,payload:{...payload,inviteCode:invite.code}});
+  assert.equal(response.statusCode,200,response.body);assert.equal(response.json().user.role,'viewer');assert.equal(response.json().token,undefined);
+  assert.ok(response.headers['set-cookie'].some(c=>c.includes('HttpOnly')));
+  const reused=await app.inject({method:'POST',url:'/api/auth/register',headers:origin,payload:{...payload,email:'other@example.invalid',inviteCode:invite.code}});
+  assert.equal(reused.statusCode,403);
+});
+test('private responses are not cacheable and operational log serializers omit sensitive paths',async () => {
+  const response=await app.inject({url:'/api/auth/me',headers});
+  assert.equal(response.headers['cache-control'],'private, no-store');
+  const req=logSerializers.req({method:'GET',url:'/api/media/secret?token=credential',headers:{cookie:'secret'},remoteAddress:'address'});
+  assert.deepEqual(req,{method:'GET'});
+  assert.deepEqual(logSerializers.err(new Error('secret file path')),{type:'Error',code:undefined});
+});
+test('party details require membership and open sockets close on logout',async () => {
+  process.env.SOCIAL_ENABLED='true';
+  const ownToken=createToken(admin);const otherToken=createToken(viewer);
+  const party=(await app.inject({method:'POST',url:'/api/parties',headers:{authorization:`Bearer ${ownToken}`},payload:{mediaId:'movie'}})).json().party;
+  const denied=await app.inject({url:`/api/parties/${party.id}`,headers:{authorization:`Bearer ${otherToken}`}});
+  assert.equal(denied.statusCode,404);
+  const ws=await app.injectWS(`/api/parties/${party.id}/ws`,{headers:{...origin,cookie:cookie(ownToken)}});
+  const closed=new Promise(resolve=>ws.once('close',resolve));
+  await app.inject({method:'POST',url:'/api/auth/logout',headers:{...origin,cookie:cookie(ownToken)}});
+  assert.equal(await closed,4001);
+  process.env.SOCIAL_ENABLED='false';
+});
+test('production cookies keep Secure even when the HTTPS proxy talks HTTP',async () => {
+  const old=process.env.NODE_ENV;process.env.NODE_ENV='production';
+  const token=createToken(viewer);
+  const response=await app.inject({url:'/api/auth/media-token',headers:{authorization:`Bearer ${token}`}});
+  assert.match(response.headers['set-cookie'],/; Secure/);
+  process.env.NODE_ENV=old || 'test';
+});

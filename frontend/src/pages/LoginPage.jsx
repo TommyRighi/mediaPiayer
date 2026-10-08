@@ -1,12 +1,10 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
   const { login, register } = useAuth();
-  const navigate = useNavigate();
   const [isRegister, setIsRegister] = useState(false);
-  const [form, setForm] = useState({ email: '', password: '', displayName: '' });
+  const [form, setForm] = useState({ email: '', password: '', displayName: '', inviteCode: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -17,11 +15,10 @@ export default function LoginPage() {
 
     try {
       if (isRegister) {
-        await register(form.email, form.password, form.displayName);
+        await register(form.email, form.password, form.displayName, form.inviteCode);
       } else {
         await login(form.email, form.password);
       }
-      navigate('/');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -46,17 +43,18 @@ export default function LoginPage() {
         </h2>
 
         {error && (
-          <div className="rounded px-4 py-3 mb-4 text-sm" style={{ background: 'rgba(194,40,40,0.15)', border: '1px solid var(--jf-error)', color: '#ef5350' }}>
+          <div role="alert" className="rounded px-4 py-3 mb-4 text-sm" style={{ background: 'rgba(194,40,40,0.15)', border: '1px solid var(--jf-error)', color: '#ef5350' }}>
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {isRegister && <div><label htmlFor="invite-code" className="block text-sm mb-1">Invito mediaPiayer</label><input id="invite-code" type="password" autoComplete="off" value={form.inviteCode} onChange={e => setForm({ ...form, inviteCode: e.target.value })} className="jf-input" required /><p className="text-xs mt-2">Usa l’invito per creare l’account. La chiave Tailscale serve invece a collegare l’app.</p></div>}
           {isRegister && (
             <div>
-              <label className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Display Name</label>
+              <label htmlFor="login-displayName" className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Display Name</label>
               <input
-                type="text"
+                id="login-displayName" autoComplete={'name'} type="text"
                 placeholder="Your name"
                 value={form.displayName}
                 onChange={(e) => setForm({ ...form, displayName: e.target.value })}
@@ -66,9 +64,9 @@ export default function LoginPage() {
             </div>
           )}
           <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Email</label>
+            <label htmlFor="login-email" className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Email</label>
             <input
-              type="email"
+              id="login-email" autoComplete={'email'} type="email"
               placeholder="email@example.com"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -77,15 +75,15 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Password</label>
+            <label htmlFor="login-password" className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Password</label>
             <input
-              type="password"
+              id="login-password" autoComplete={isRegister ? 'new-password' : 'current-password'} type="password"
               placeholder="Enter your password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               className="jf-input"
               required
-              minLength={6}
+              minLength={isRegister ? 12 : undefined}
             />
           </div>
 

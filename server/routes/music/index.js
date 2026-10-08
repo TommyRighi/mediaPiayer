@@ -48,6 +48,7 @@ async function musicRoutes(fastify) {
 
   fastify.post(prefix + '/progress', { preHandler: [authMiddleware] }, async (request) => {
     const db = getDb();
+    if (!request.user.history_enabled) return { success: true, private: true };
     const { track_id, progress_seconds, duration, completed } = request.body;
     if (!track_id) throw { statusCode: 400, message: 'track_id is required' };
     const existing = db.prepare('SELECT id FROM track_progress WHERE user_id = ? AND track_id = ?').get(request.user.id, track_id);
@@ -66,6 +67,7 @@ async function musicRoutes(fastify) {
 
   fastify.get(prefix + '/progress', { preHandler: [authMiddleware] }, async (request) => {
     const db = getDb();
+    if (!request.user.history_enabled) return [];
     return db.prepare('SELECT * FROM track_progress WHERE user_id = ?').all(request.user.id);
   });
 

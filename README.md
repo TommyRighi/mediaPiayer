@@ -4,7 +4,7 @@ Self-hosted Netflix-like media streaming that runs well on a Raspberry Pi and ca
 
 ## Requirements (all machines)
 
-- Node.js 20 LTS (or newer)
+- Node.js 24 LTS (or newer)
 - npm
 - Git
 - Build tools for native modules (better-sqlite3, sharp)
@@ -22,10 +22,10 @@ sudo apt install -y git build-essential python3 pkg-config \
   libsqlite3-dev libvips-dev ffmpeg
 ```
 
-2. Install Node.js 20 LTS:
+2. Install Node.js 24 LTS:
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs
 ```
 
@@ -43,9 +43,12 @@ cd frontend && npm install
 ```bash
 cat > .env <<'EOF'
 JWT_SECRET=replace-with-a-long-random-string
-ADMIN_INVITE_CODE=optional-admin-code
+NODE_ENV=production
+PUBLIC_ORIGIN=https://raspberry.your-tailnet.ts.net
+SOCIAL_ENABLED=false
+ENABLE_DOWNLOADS=false
 PORT=3000
-HOST=0.0.0.0
+HOST=127.0.0.1
 # Comma-separated absolute paths (optional). Defaults to ./media
 # MEDIA_DIRS=/mnt/media
 # Optional when running in production behind a custom domain
@@ -55,7 +58,7 @@ HOST=0.0.0.0
 EOF
 ```
 
-`JWT_SECRET` is required. If `ADMIN_INVITE_CODE` is empty, the first registered user becomes admin.
+`JWT_SECRET` is required and must be at least 32 bytes in production. Create the first administrator locally with `npm run users -- create --email you@example.com --name Admin --role admin`. Registration requires a one-use invitation; there is no automatic first-user administrator. See the [private desktop deployment guide](docs/app-desktop-tailscale.md).
 
 5. Ensure media directories exist (default):
 
@@ -74,7 +77,7 @@ The database is created automatically at `data/mediapiayer.db`.
 
 ## General machine setup (macOS/Linux/Windows)
 
-1. Install Node.js 20 LTS and Git.
+1. Install Node.js 24 LTS and Git.
 2. Install build tools for native modules:
 
 Linux:
@@ -166,16 +169,16 @@ tailscale ip -4
 4. Open the app from any device on the tailnet:
 
 ```
-http://<tailscale-ip>:3000
+https://<raspberry>.<tailnet>.ts.net
 ```
 
 If MagicDNS is enabled in your tailnet, you can use:
 
 ```
-http://mediapiayer:3000
+https://<raspberry>.<tailnet>.ts.net
 ```
 
-No router port forwarding is required.
+With `HOST=127.0.0.1`, enable private HTTPS using `sudo tailscale serve --bg 3000` and use the exact URL shown by `tailscale serve status`. Set `PUBLIC_ORIGIN` to that origin. No router port forwarding is required. Never use Funnel for private sharing.
 
 ## Optional SSH menu
 
@@ -225,3 +228,62 @@ Then set this in `.env`:
 ```
 TRANSMISSION_URL=http://user:pass@127.0.0.1:9091/transmission/rpc
 ```
+
+## Playback-first operation on small Raspberry Pi hosts
+
+Keep conversion enabled. The server runs one managed media process at a time,
+with CPU nice level 19 and Linux idle I/O priority when `ionice` is available.
+Video conversion, subtitle extraction, and YouTube audio processing share this
+queue. On POSIX hosts the process group is stopped during playback and resumed
+when playback ends. Playback heartbeats cover buffered video, music, and watch
+parties; disconnected clients expire after 75 seconds. Ordinary browsing defers
+work for 10 seconds, and streaming requests for 30 seconds.
+
+Preparation also waits when available RAM falls below 80 MiB or the reported
+CPU temperature reaches 75°C. Suspended processes retain their memory. These
+checks reduce contention; they cannot guarantee smooth playback on every Wi-Fi
+connection or prevent every out-of-memory condition. Verify actual bitrate,
+CPU load, RAM, and temperature on the target Pi. Native Windows process
+suspension is not supported.
+
+Low-memory hosts use one video rendition and one software encoder thread.
+Compatible files still stream directly. Hardware encoders are tested lazily;
+unsupported encoders fall back to software. Interrupted conversions are picked
+up at the next server start. The transcode CLI queues conversions for the running
+server, which checks for newly queued work every 30 seconds.
+
+Build on a more capable machine where possible. The frontend build emits gzip
+and Brotli assets, served without runtime compression. Pages and video libraries
+load on demand; the video catalog loads 36 titles at a time. Playback progress
+is saved every 20 seconds and on pause/end, and user presence at most once a
+minute per user. Music uploads stream to disk instead of buffering whole files.
+
+The original Pi Zero W uses ARMv6: normal modern Node.js distribution binaries
+are not compatible with it. A compatible runtime and native dependencies are
+still required. These application optimizations do not change that requirement.
+
+## Regression checks
+
+Use a supported Node.js version on the development machine, with native modules
+installed for that version. `npm test` uses Node's built-in test runner, isolated
+temporary SQLite databases, and scheduler fixtures. `npm run build` checks the
+production bundle; run `npm run lint` from `frontend/` for the frontend checks.
+`DATABASE_PATH` can override the database location for isolated local validation.
+
+## Desktop app with built-in Tailscale
+
+Friends install one app for Windows or macOS. Electron includes a Go/tsnet helper;
+Tailscale is used only by the app. First launch accepts the Pi's private HTTPS
+`.ts.net` address and a one-use enrollment key, or opens the official Tailscale login.
+The app keeps the node identity encrypted using an OS-protected key and opens the
+existing frontend through a capability-protected loopback proxy.
+
+See [setup, invitations, builds and security limits](docs/app-desktop-tailscale.md).
+Desktop dependencies are separate: `npm ci --prefix desktop`.
+Go 1.26+ is required to compile the helper. Run `npm run helper:build --prefix desktop`,
+then `npm run desktop:start`. Build installers with `npm run desktop:build`.
+
+Sessions use HttpOnly cookies; logout revokes them on the server. Viewing history
+is off by default, with explicit opt-in in Profile. Social features and downloaders
+are off by default. Existing progress and backups are not automatically destroyed.
+The Node test suite is available with `npm test`; frontend lint runs in `frontend/`.

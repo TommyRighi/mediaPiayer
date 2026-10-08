@@ -3,7 +3,16 @@ const { authMiddleware } = require('../auth');
 const { nanoid } = require('nanoid');
 
 async function watchRoutes(fastify) {
+  fastify.post('/api/watch/activity', { preHandler: authMiddleware }, async (request, reply) => {
+    const { sessionId, playing } = request.body || {};
+    if (typeof sessionId !== 'string' || sessionId.length > 80 || typeof playing !== 'boolean') {
+      return reply.code(400).send({ error: 'Invalid playback activity' });
+    }
+    require('../background').playback(request.user.id, sessionId, playing);
+    return { success: true };
+  });
   fastify.post('/api/watch/progress', { preHandler: authMiddleware }, async (request, reply) => {
+    if (!request.user.history_enabled) return { success: true, private: true };
     const { mediaId, episodeId, seconds, completed, duration } = request.body || {};
 
     if (!mediaId) {
@@ -46,8 +55,9 @@ async function watchRoutes(fastify) {
   fastify.get('/api/watch/history', { preHandler: authMiddleware }, async (request) => {
     const db = getDb();
 
+    if (!request.user.history_enabled) return { history: [] };
     const progress = db.prepare(
-      `SELECT wp.*, m.title, m.type, m.poster_path, m.backdrop_path, e.title AS episode_title, e.season_number, e.episode_number
+      `SELECT wp.*, m.title, m.type, m.poster_path, m.backdrop_path, COALESCE(e.duration, m.duration) AS duration, e.title AS episode_title, e.season_number, e.episode_number
        FROM watch_progress wp
        JOIN media m ON wp.media_id = m.id
        LEFT JOIN episodes e ON wp.episode_id = e.id

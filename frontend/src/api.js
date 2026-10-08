@@ -1,34 +1,15 @@
 const BASE = '/api';
 
-function token() {
-  return localStorage.getItem('token');
-}
+let mediaReady = false;
+// Sessions live in HttpOnly cookies. Remove credentials left by older builds.
+localStorage.removeItem('token');
+localStorage.removeItem('mediaToken');
 
-function getMediaToken() {
-  const mt = localStorage.getItem('mediaToken');
-  if (!mt) return null;
-  try {
-    const payload = JSON.parse(atob(mt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    if (payload.exp * 1000 > Date.now()) return mt;
-  } catch { /* ignore */ }
-  localStorage.removeItem('mediaToken');
-  return null;
-}
-
-// Media URLs must never fall back to the long-lived main auth token — it
-// would leak a 7-day credential into the URL bar/history/logs. If no
-// short-lived media token is available yet, callers get an empty string
-// and playback should be blocked until refreshMediaToken() resolves.
-function mediaOrMainToken() {
-  return getMediaToken() || '';
-}
-
-async function request(method, path, body) {
+async function request(method, path, body, options = {}) {
   const headers = {};
-  const t = token();
-  if (t) headers['Authorization'] = `Bearer ${t}`;
 
-  const opts = { method, headers };
+  Object.assign(headers, options.headers);
+  const opts = { method, ...options, headers };
   if (body && method !== 'GET') {
     headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
@@ -37,14 +18,27 @@ async function request(method, path, body) {
   const res = await fetch(`${BASE}${path}`, opts);
   const data = await res.json().catch(() => ({}));
 
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  if (!res.ok) {
+    const error = new Error(data.error || 'Unable to complete the request. Please try again.');
+    error.status = res.status;
+    if (res.status === 401 && !path.startsWith('/auth/')) window.dispatchEvent(new Event('auth-expired'));
+    throw error;
+  }
   return data;
 }
 
 export const api = {
   auth: {
-    register: (email, password, displayName) =>
-      request('POST', '/auth/register', { email, password, displayName }),
+    logout: () => request('POST', '/auth/logout'),
+    config: () => request('GET', '/auth/config'),
+    privacy: historyEnabled => request('PATCH', '/auth/privacy', { historyEnabled }),
+    clearHistory: () => request('DELETE', '/auth/history'),
+    sessions: () => request('GET', '/auth/sessions'),
+    revokeAll: () => request('POST', '/auth/revoke-all'),
+    revokeSession: id => request('DELETE', `/auth/sessions/${id}`),
+    invite: () => request('POST', '/auth/invites'),
+    register: (email, password, displayName, inviteCode) =>
+      request('POST', '/auth/register', { email, password, displayName, inviteCode }),
     login: (email, password) => request('POST', '/auth/login', { email, password }),
     me: () => request('GET', '/auth/me'),
     updateProfile: (data) => request('PATCH', '/auth/profile', data),
@@ -54,19 +48,20 @@ export const api = {
       request('POST', '/auth/change-password', { currentPassword, newPassword }),
   },
   media: {
+    subtitleUrl: (id) => `${BASE}/subtitles/${id}`,
     list: (params = {}) => {
       const q = new URLSearchParams(params).toString();
       return request('GET', `/media${q ? '?' + q : ''}`);
     },
-    get: (id) => request('GET', `/media/${id}`),
+    get: (id, background = false) => request('GET', `/media/${id}`, null, background ? { headers: { 'X-Background-Request': '1' } } : {}),
     update: (id, data) => request('PATCH', `/media/${id}`, data),
     delete: (id) => request('DELETE', `/media/${id}`),
-    videoUrl: (id) => `${BASE}/media/${id}/video?token=${mediaOrMainToken()}`,
-    episodeVideoUrl: (id) => `${BASE}/episodes/${id}/video?token=${mediaOrMainToken()}`,
-    hlsUrl: (id) => `${BASE}/media/${id}/hls/master.m3u8?token=${mediaOrMainToken()}`,
-    episodeHlsUrl: (id) => `${BASE}/episodes/${id}/hls/master.m3u8?token=${mediaOrMainToken()}`,
-    posterUrl: (id, size) => `${BASE}/media/${id}/poster?${size ? 'size=' + size + '&' : ''}token=${mediaOrMainToken()}`,
-    backdropUrl: (id, size) => `${BASE}/media/${id}/backdrop?${size ? 'size=' + size + '&' : ''}token=${mediaOrMainToken()}`,
+    videoUrl: (id) => `${BASE}/media/${id}/video`,
+    episodeVideoUrl: (id) => `${BASE}/episodes/${id}/video`,
+    hlsUrl: (id) => `${BASE}/media/${id}/hls/master.m3u8`,
+    episodeHlsUrl: (id) => `${BASE}/episodes/${id}/hls/master.m3u8`,
+    posterUrl: (id, size) => `${BASE}/media/${id}/poster${size ? '?size=' + encodeURIComponent(size) : ''}`,
+    backdropUrl: (id, size) => `${BASE}/media/${id}/backdrop${size ? '?size=' + encodeURIComponent(size) : ''}`,
     subtitles: (id) => request('GET', `/media/${id}/subtitles`),
     episodeSubtitles: (id) => request('GET', `/episodes/${id}/subtitles`),
     audioTracks: (id) => request('GET', `/media/${id}/audio-tracks`),
@@ -76,8 +71,9 @@ export const api = {
     episodes: (id) => request('GET', `/series/${id}/episodes`),
   },
   watch: {
+    activity: (sessionId, playing) => request('POST', '/watch/activity', { sessionId, playing }, { keepalive: true }),
     progress: (mediaId, episodeId, seconds, completed, duration) =>
-      request('POST', '/watch/progress', { mediaId, episodeId, seconds, completed, duration }),
+      request('POST', '/watch/progress', { mediaId, episodeId, seconds, completed, duration }, { keepalive: true }),
     history: () => request('GET', '/watch/history'),
   },
   parties: {
@@ -119,7 +115,7 @@ export const api = {
       create: (data) => request('POST', '/music/albums', data),
       update: (id, data) => request('PATCH', `/music/albums/${id}`, data),
       delete: (id) => request('DELETE', `/music/albums/${id}`),
-      coverUrl: (id) => `${BASE}/music/albums/${id}/cover?token=${mediaOrMainToken()}`,
+      coverUrl: (id) => `${BASE}/music/albums/${id}/cover`,
     },
     tracks: {
       list: (params = {}) => {
@@ -127,7 +123,7 @@ export const api = {
         return request('GET', `/music/tracks${q ? '?' + q : ''}`);
       },
       get: (id) => request('GET', `/music/tracks/${id}`),
-      streamUrl: (id) => `${BASE}/music/tracks/${id}/stream?token=${mediaOrMainToken()}`,
+      streamUrl: (id) => `${BASE}/music/tracks/${id}/stream`,
       update: (id, data) => request('PATCH', `/music/tracks/${id}`, data),
       delete: (id) => request('DELETE', `/music/tracks/${id}`),
       random: (limit) => request('GET', `/music/random${limit ? '?limit=' + limit : ''}`),
@@ -161,36 +157,20 @@ export const api = {
   },
 };
 
-export function getToken() {
-  return token();
-}
-
-export function setToken(t) {
-  localStorage.setItem('token', t);
-}
-
-export function clearToken() {
-  localStorage.removeItem('token');
-}
-
-export function setMediaToken(t) {
-  localStorage.setItem('mediaToken', t);
-}
-
-export function clearMediaToken() {
-  localStorage.removeItem('mediaToken');
-}
-
-export function hasMediaToken() {
-  return !!getMediaToken();
-}
+// Kept for existing player/upload callers. Cookie authentication is automatic.
+export function getToken() { return null; }
+export function setToken() { /* Credentials are never exposed to JavaScript. */ }
+export function clearToken() { localStorage.removeItem('token'); }
+export function setMediaToken() { mediaReady = true; }
+export function clearMediaToken() { mediaReady = false; localStorage.removeItem('mediaToken'); }
+export function hasMediaToken() { return mediaReady; }
 
 export async function refreshMediaToken(retries = 3, delayMs = 2000) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const data = await api.auth.mediaToken();
-      setMediaToken(data.mediaToken);
-      return data.mediaToken;
+      mediaReady = data.ready === true;
+      return mediaReady;
     } catch (err) {
       if (attempt === retries) throw err;
       await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));

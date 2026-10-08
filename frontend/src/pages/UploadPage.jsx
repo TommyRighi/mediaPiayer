@@ -27,6 +27,7 @@ export default function UploadPage() {
     setError('');
     setSuccess('');
     setUploading(true);
+    setProgress(0);
 
     const formData = new FormData();
     formData.append('type', type);
@@ -60,7 +61,7 @@ export default function UploadPage() {
 
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          setSuccess('Upload complete! Redirecting...');
+          setSuccess('Upload received. Opening your library; videos that need preparation will appear there.');
           setTimeout(() => navigate('/'), 1500);
         } else {
           try {
@@ -151,6 +152,8 @@ export default function UploadPage() {
           <div>
             <label className="block text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>Video File</label>
             <div
+              role="button" tabIndex={0} aria-label="Choose a video file"
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click(); } }}
               className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition"
               style={{ borderColor: 'rgba(255,255,255,0.12)' }}
               onMouseEnter={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'}
@@ -169,7 +172,7 @@ export default function UploadPage() {
           {uploading && (
             <div className="rounded-lg p-3" style={{ background: 'var(--jf-surface)' }}>
               <div className="flex items-center justify-between text-sm mb-1" style={{ color: 'var(--jf-text-secondary)' }}>
-                <span>Uploading...</span>
+                <span>{progress === 100 ? 'Upload received. Processing…' : 'Uploading…'}</span>
                 <span>{progress}%</span>
               </div>
               <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.12)' }}>

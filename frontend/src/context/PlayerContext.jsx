@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { api } from '../api';
+import usePlaybackActivity from '../hooks/usePlaybackActivity';
 
 const PlayerContext = createContext(null);
 
@@ -21,16 +22,24 @@ export function PlayerProvider({ children }) {
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState('off');
   const [progressMap, setProgressMap] = useState({});
+  const progressLoaded = useRef(false);
+
+  usePlaybackActivity(playing);
 
   const currentTrack = currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
 
+  const trackId = currentTrack?.id;
+  const streamUrl = useMemo(() => trackId ? api.music.tracks.streamUrl(trackId) : undefined, [trackId]);
+
   useEffect(() => {
+    if (!currentTrack || progressLoaded.current) return;
+    progressLoaded.current = true;
     api.music.progress.list().then(data => {
       const map = {};
       for (const p of data) map[p.track_id] = p;
       setProgressMap(map);
-    }).catch(() => {});
-  }, []);
+    }).catch(() => { progressLoaded.current = false; });
+  }, [currentTrack]);
 
   const playTrack = useCallback((track, trackList) => {
     const list = trackList || [track];
@@ -112,7 +121,7 @@ export function PlayerProvider({ children }) {
           [currentTrack.id]: { ...prev[currentTrack.id], progress_seconds: time, duration: dur },
         }));
       }
-    }, 10000);
+    }, 20000);
     return () => clearInterval(progressTimerRef.current);
   }, [playing, currentTrack]);
 
@@ -122,10 +131,12 @@ export function PlayerProvider({ children }) {
       if (audio) { audio.currentTime = 0; audio.play(); }
       return;
     }
+    if (currentTrack) {
+      api.music.progress.save(currentTrack.id, Math.floor(duration), duration, true).catch(() => {});
+    }
     if (currentIndex >= queue.length - 1 && repeat !== 'all') {
       setPlaying(false);
       if (currentTrack) {
-        api.music.progress.save(currentTrack.id, Math.floor(duration), duration, true).catch(() => {});
         setProgressMap(prev => ({
           ...prev,
           [currentTrack.id]: { ...prev[currentTrack.id], progress_seconds: duration, completed: 1 },
@@ -173,10 +184,10 @@ export function PlayerProvider({ children }) {
       {children}
       <audio
         ref={audioRef}
-        src={currentTrack ? api.music.tracks.streamUrl(currentTrack.id) : undefined}
+        src={streamUrl}
         onTimeUpdate={() => {
           const audio = audioRef.current;
-          if (audio) setCurrentTime(audio.currentTime);
+          if (audio) setCurrentTime(Math.floor(audio.currentTime));
         }}
         onDurationChange={() => {
           const audio = audioRef.current;
@@ -184,7 +195,11 @@ export function PlayerProvider({ children }) {
         }}
         onEnded={handleEnded}
         onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
+        onPause={() => {
+          setPlaying(false);
+          const audio = audioRef.current;
+          if (currentTrack && audio?.currentTime > 0 && Number.isFinite(audio.duration)) api.music.progress.save(currentTrack.id, Math.floor(audio.currentTime), Math.floor(audio.duration), audio.ended).catch(() => {});
+        }}
         preload="auto"
       />
     </PlayerContext.Provider>

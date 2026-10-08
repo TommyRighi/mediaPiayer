@@ -4,7 +4,7 @@ const { MEDIA_DIRS } = require('../../utils');
 const { nanoid } = require('nanoid');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawnBackground } = require('../../background');
 
 const ytDlpJobs = new Map();
 
@@ -25,8 +25,8 @@ async function youtubeRoutes(fastify) {
       return reply.status(400).send({ error: 'Invalid URL format' });
     }
 
-    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      return reply.status(400).send({ error: 'Only HTTP and HTTPS URLs are allowed' });
+    if (parsedUrl.protocol !== 'https:' || parsedUrl.username || parsedUrl.password || parsedUrl.port || !['youtube.com','www.youtube.com','m.youtube.com','music.youtube.com','youtu.be'].includes(parsedUrl.hostname)) {
+      return reply.status(400).send({ error: 'Only official HTTPS YouTube URLs are allowed' });
     }
 
     const id = nanoid();
@@ -43,10 +43,11 @@ async function youtubeRoutes(fastify) {
     const job = { id, url, outputPath, status: 'downloading', progress: 0 };
     ytDlpJobs.set(id, job);
 
-    const ytDlp = spawn('yt-dlp', [
+    (async () => {
+    const ytDlp = await spawnBackground('yt-dlp', [
       '--extract-audio',
       '--audio-format', 'mp3',
-      '--audio-quality', '0',
+      '--audio-quality', '5',
       '--output', outputPath,
       '--newline',
       '--no-playlist',
@@ -58,7 +59,10 @@ async function youtubeRoutes(fastify) {
       const progressMatch = output.match(/\[download\]\s+(\d+\.?\d*)%/);
       if (progressMatch) {
         job.progress = parseFloat(progressMatch[1]);
-        db.prepare('UPDATE youtube_downloads SET progress = ? WHERE id = ?').run(job.progress, id);
+        if (Date.now() - (job.lastSaved || 0) >= 10000) {
+          db.prepare('UPDATE youtube_downloads SET progress = ? WHERE id = ?').run(job.progress, id);
+          job.lastSaved = Date.now();
+        }
       }
     });
 
@@ -97,6 +101,14 @@ async function youtubeRoutes(fastify) {
       ytDlpJobs.delete(id);
     });
 
+    ytDlp.on('error', err => {
+      db.prepare('UPDATE youtube_downloads SET status=?, error=? WHERE id=?').run('failed', err.message, id);
+      ytDlpJobs.delete(id);
+    });
+    })().catch(err => {
+      db.prepare('UPDATE youtube_downloads SET status=?, error=? WHERE id=?').run('failed', err.message, id);
+      ytDlpJobs.delete(id);
+    });
     return { id, status: 'downloading' };
   });
 
@@ -105,7 +117,8 @@ async function youtubeRoutes(fastify) {
     const dl = db.prepare('SELECT * FROM youtube_downloads WHERE id = ?').get(request.params.id);
     if (!dl) return reply.status(404).send({ error: 'Download not found' });
     const job = ytDlpJobs.get(request.params.id);
-    return { ...dl, progress: job ? job.progress : dl.progress };
+    const reason = require('../../background').pauseReason();
+    return { ...dl, status: job && reason ? 'paused' : dl.status, reason, progress: job ? job.progress : dl.progress };
   });
 
   fastify.get('/youtube/downloads', { preHandler: [authMiddleware, adminMiddleware] }, async () => {

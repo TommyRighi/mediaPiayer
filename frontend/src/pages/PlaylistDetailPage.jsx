@@ -86,7 +86,7 @@ export default function PlaylistDetailPage() {
   return (
     <div>
       <div className="p-4 md:p-8" style={{ background: 'linear-gradient(to bottom, var(--jf-surface-elevated), var(--jf-bg))' }}>
-        <div className="flex items-end gap-6">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-6">
           <div className="w-48 flex-shrink-0">
             <div className="aspect-square rounded-lg overflow-hidden shadow-xl flex items-center justify-center" style={{ background: 'var(--jf-surface)' }}>
               <svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor" style={{ color: 'var(--jf-text-muted)' }}><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z" /></svg>
@@ -111,7 +111,7 @@ export default function PlaylistDetailPage() {
               </>
             )}
             {!editing && (
-              <div className="flex gap-2 mt-4">
+              <div className="flex flex-wrap gap-2 mt-4">
                 <button onClick={() => tracks.length > 0 && player.playQueue(tracks, 0)} className="jf-btn-primary flex items-center gap-2" disabled={tracks.length === 0}>
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
                   Play
@@ -135,28 +135,29 @@ export default function PlaylistDetailPage() {
             <div
               key={track.id}
               className="flex items-center gap-3 px-3 py-2 rounded group hover:bg-white/5 transition-colors cursor-pointer"
-              onClick={() => player.playTrack(track, tracks)}
+
             >
               <span className="w-8 text-center text-sm" style={{ color: 'var(--jf-text-muted)' }}>{idx + 1}</span>
               <button
-                onClick={(e) => { e.stopPropagation(); toggleFavorite(track.id); }}
-                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                aria-label={favorites.has(track.id) ? "Remove from favorites" : "Add to favorites"}
+              onClick={(e) => { e.stopPropagation(); toggleFavorite(track.id); }}
+                className="jf-track-action p-2"
                 style={{ color: favorites.has(track.id) ? 'var(--jf-primary)' : 'var(--jf-text-muted)' }}
               >
                 <svg viewBox="0 0 24 24" width="16" height="16" fill={favorites.has(track.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
                   <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
                 </svg>
               </button>
-              <div className="flex-1 min-w-0">
+              <button onClick={() => player.playTrack(track, tracks)} className="flex-1 min-w-0 text-left py-2">
                 <div className="text-sm font-medium truncate" style={{ color: 'var(--jf-text-primary)' }}>{track.title}</div>
                 <div className="text-xs truncate" style={{ color: 'var(--jf-text-secondary)' }}>{track.artist || 'Unknown'}</div>
-              </div>
+              </button>
               {track.duration > 0 && (
                 <span className="text-xs" style={{ color: 'var(--jf-text-muted)' }}>{formatDuration(track.duration)}</span>
               )}
               <button
                 onClick={(e) => { e.stopPropagation(); removeTrack(track.id); }}
-                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                className="jf-track-action p-2"
                 style={{ color: 'var(--jf-text-muted)' }}
                 title="Remove from playlist"
               >

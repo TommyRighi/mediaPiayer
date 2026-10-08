@@ -39,7 +39,7 @@ function NavIcon({ icon }) {
 }
 
 export default function Sidebar({ collapsed, mobileOpen, onClose }) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, socialEnabled } = useAuth();
   const location = useLocation();
 
   const isActive = (path) => {
@@ -77,7 +77,7 @@ export default function Sidebar({ collapsed, mobileOpen, onClose }) {
         </div>
 
         <div className="jf-sidebar-footer">
-          <Link
+          {socialEnabled && <Link
             to="/join"
             onClick={onClose}
             className={`jf-sidebar-item ${isActive('/join') ? 'jf-sidebar-item-active' : ''}`}
@@ -85,7 +85,7 @@ export default function Sidebar({ collapsed, mobileOpen, onClose }) {
           >
             <NavIcon icon="party" />
             {!collapsed && <span>Watch Party</span>}
-          </Link>
+          </Link>}
           <Link
             to="/profile"
             onClick={onClose}

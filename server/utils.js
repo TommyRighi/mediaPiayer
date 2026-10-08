@@ -59,9 +59,8 @@ async function streamHlsFile(request, reply, filePath) {
   reply.headers({
     'Content-Type': contentType,
     'Content-Length': stat.size,
-    'Cache-Control': 'no-cache',
+    'Cache-Control': 'private, no-store',
     'ETag': etag,
-    'Access-Control-Allow-Origin': '*',
     'Referrer-Policy': 'no-referrer',
   });
 
@@ -85,7 +84,7 @@ async function streamVideo(request, reply, filePath) {
   const cacheHeaders = {
     'Accept-Ranges': 'bytes',
     'Content-Type': contentType,
-    'Cache-Control': 'public, max-age=3600',
+    'Cache-Control': 'private, no-store',
     'ETag': etag,
     'Last-Modified': stat.mtime.toUTCString(),
     'Referrer-Policy': 'no-referrer',
@@ -106,7 +105,7 @@ async function streamVideo(request, reply, filePath) {
       'Content-Length': chunkSize,
     });
 
-    return fs.createReadStream(filePath, { start, end, highWaterMark: 1024 * 1024 });
+    return fs.createReadStream(filePath, { start, end, highWaterMark: 64 * 1024 });
   }
 
   reply.headers({
@@ -114,7 +113,7 @@ async function streamVideo(request, reply, filePath) {
     'Content-Length': fileSize,
   });
 
-  return fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 });
+  return fs.createReadStream(filePath, { highWaterMark: 64 * 1024 });
 }
 
 const SUBTITLE_EXTENSIONS = ['.srt', '.vtt'];

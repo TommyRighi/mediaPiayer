@@ -1,6 +1,9 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
+// The server owns encoding; CLI commands only persist queued jobs.
+process.env.TRANSCODE_WORKER = 'external';
+
 const { getDb } = require('../server/db');
 
 function printHelp() {
@@ -85,7 +88,7 @@ function cmdStatus() {
   console.log(`Total: ${pendingMovies.length + pendingEps.length} job(s) pending or converting.\n`);
 }
 
-function cmdRetry() {
+async function cmdRetry() {
   const db = getDb();
   const { enqueue, needsTranscoding, getVideoCodecInfo } = require('../server/transcode');
 
@@ -105,12 +108,12 @@ function cmdRetry() {
   let retried = 0;
 
   for (const m of failedMovies) {
-    const info = getVideoCodecInfo(m.file_path);
+    const info = await getVideoCodecInfo(m.file_path);
     if (!info) {
       console.log(`  ✗  ${m.title}  (file unreadable — may be corrupted)`);
       continue;
     }
-    if (needsTranscoding(m.file_path)) {
+    if (await needsTranscoding(m.file_path)) {
       db.prepare("UPDATE media SET transcode_status = 'pending' WHERE id = ?").run(m.id);
       enqueue('movie', m.id);
       console.log(`  ↻  ${m.title}`);
@@ -122,12 +125,12 @@ function cmdRetry() {
   }
 
   for (const e of failedEps) {
-    const info = getVideoCodecInfo(e.file_path);
+    const info = await getVideoCodecInfo(e.file_path);
     if (!info) {
       console.log(`  ✗  ${e.title}  (file unreadable — may be corrupted)`);
       continue;
     }
-    if (needsTranscoding(e.file_path)) {
+    if (await needsTranscoding(e.file_path)) {
       db.prepare("UPDATE episodes SET transcode_status = 'pending' WHERE id = ?").run(e.id);
       enqueue('episode', e.id);
       console.log(`  ↻  ${e.title}`);
@@ -205,7 +208,7 @@ switch (cmd) {
     cmdStatus();
     break;
   case 'retry':
-    cmdRetry();
+    cmdRetry().catch(err => { console.error(err.message); process.exitCode = 1; });
     break;
   case 'list':
     cmdList();

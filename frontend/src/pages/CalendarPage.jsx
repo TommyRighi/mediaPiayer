@@ -54,23 +54,22 @@ export default function CalendarPage() {
   }, []);
 
   useEffect(() => {
-    fetchRequests();
+    const timer = setTimeout(fetchRequests, 0);
+    return () => clearTimeout(timer);
   }, [fetchRequests]);
 
   useEffect(() => {
-    if (mediaSearch.length < 2) {
-      setMediaResults([]);
-      return;
-    }
+    let cancelled = false;
     const t = setTimeout(async () => {
+      if (mediaSearch.length < 2) { setMediaResults([]); return; }
       try {
         const data = await api.media.list({ search: mediaSearch, limit: 8 });
-        setMediaResults(data.media || []);
+        if (!cancelled) setMediaResults(data.media || []);
       } catch {
         setMediaResults([]);
       }
     }, 300);
-    return () => clearTimeout(t);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [mediaSearch]);
 
   async function handleRespond(requestId, response) {

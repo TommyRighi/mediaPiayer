@@ -1,0 +1,70 @@
+name: Desktop installers
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            platform: mac
+            arch: arm64
+            target: darwin-arm64
+            csc_link: MACOS_CSC_LINK
+            csc_password: MACOS_CSC_KEY_PASSWORD
+          - os: macos-15-intel
+            platform: mac
+            arch: x64
+            target: darwin-amd64
+            csc_link: MACOS_CSC_LINK
+            csc_password: MACOS_CSC_KEY_PASSWORD
+          - os: windows-latest
+            platform: win
+            arch: x64
+            target: windows-amd64
+            csc_link: WINDOWS_CSC_LINK
+            csc_password: WINDOWS_CSC_KEY_PASSWORD
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/helper/go.mod
+          cache-dependency-path: desktop/helper/go.sum
+      - run: npm ci
+        working-directory: desktop
+      - run: npm test
+        working-directory: desktop
+      - run: go test ./...
+        working-directory: desktop/helper
+      - run: npm run helper:build
+        working-directory: desktop
+        env:
+          HELPER_TARGETS: ${{ matrix.target }}
+      - run: npm run licenses
+        working-directory: desktop
+      - run: npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }}
+        working-directory: desktop
+        env:
+          CSC_LINK: ${{ secrets[matrix.csc_link] }}
+          CSC_KEY_PASSWORD: ${{ secrets[matrix.csc_password] }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mediapiayer-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.exe
+            desktop/release/*.blockmap
+            desktop/release/*.yml
+          if-no-files-found: error

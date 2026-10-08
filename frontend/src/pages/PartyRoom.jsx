@@ -6,6 +6,7 @@ import ChatPanel from '../components/ChatPanel';
 import Plyr from 'plyr';
 import Hls from 'hls.js';
 import 'plyr/css';
+import usePlaybackActivity from '../hooks/usePlaybackActivity';
 
 export default function PartyRoom() {
   const { partyId } = useParams();
@@ -20,14 +21,16 @@ export default function PartyRoom() {
   const [members, setMembers] = useState([]);
   const [messages, setMessages] = useState([]);
   const [synced, setSynced] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const applyingRemote = useRef(false);
+  usePlaybackActivity(playing);
   const [showSidebar, setShowSidebar] = useState(false);
   const [mediaTokenReady, setMediaTokenReady] = useState(hasMediaToken());
 
-  const token = getToken();
   const isMovie = party?.media_type === 'movie';
   const hlsAvailable = isMovie
-    ? !!(party?.media_file_path?.endsWith('.m3u8'))
-    : !!(party?.episode_file_path?.endsWith('.m3u8'));
+    ? !!party?.media_hls_available
+    : !!party?.episode_hls_available;
 
   // Media URLs require a short-lived media token — never fall back to the
   // long-lived main auth token, so playback waits until one is available.
@@ -50,7 +53,7 @@ export default function PartyRoom() {
       : party.episode_id ? api.media.episodeVideoUrl(party.episode_id) : null;
   }, [party, hlsAvailable, isMovie, mediaTokenReady]);
 
-  const isHls = videoUrl?.endsWith('.m3u8') || false;
+  const isHls = videoUrl ? new URL(videoUrl, window.location.href).pathname.endsWith('.m3u8') : false;
 
   useEffect(() => {
     api.parties.get(partyId).then((data) => {
@@ -84,6 +87,7 @@ export default function PartyRoom() {
 
     if (isHls && Hls.isSupported()) {
       const hls = new Hls({
+        xhrSetup: xhr => { const auth = getToken(); if (auth) xhr.setRequestHeader('Authorization', `Bearer ${auth}`); },
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
       });
@@ -124,13 +128,13 @@ export default function PartyRoom() {
         delete window.Hls;
       }
     };
-  }, [videoUrl, party]);
+  }, [videoUrl, party, isHls]);
 
   useEffect(() => {
-    if (!partyId || !token) return;
+    if (!partyId) return;
 
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${proto}://${window.location.host}/api/parties/${partyId}/ws?token=${token}`);
+    const ws = new WebSocket(`${proto}://${window.location.host}/api/parties/${partyId}/ws`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
@@ -140,6 +144,7 @@ export default function PartyRoom() {
           const video = videoRef.current;
           if (!video) return;
 
+          applyingRemote.current = true;
           if (msg.action === 'play') {
             video.currentTime = msg.position;
             video.play().catch(() => {});
@@ -149,6 +154,7 @@ export default function PartyRoom() {
           } else if (msg.action === 'seek') {
             video.currentTime = msg.position;
           }
+          setTimeout(() => { applyingRemote.current = false; }, 300);
           setSynced(true);
         } else if (msg.type === 'chat') {
           setMessages((prev) => [...prev, msg]);
@@ -156,9 +162,10 @@ export default function PartyRoom() {
       } catch (err) { console.error('WS message error:', err); }
     };
 
-    ws.onclose = () => {};
+    ws.onopen = () => setSynced(true);
+    ws.onclose = () => setSynced(false);
     return () => ws.close();
-  }, [partyId, token]);
+  }, [partyId]);
 
   function sendAction(type, position) {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
@@ -182,21 +189,21 @@ export default function PartyRoom() {
   function handlePlay() {
     const video = videoRef.current;
     if (!video) return;
-    sendAction('play', video.currentTime);
-    video.play();
+    setPlaying(true);
+    if (!applyingRemote.current) sendAction('play', video.currentTime);
   }
 
   function handlePause() {
     const video = videoRef.current;
     if (!video) return;
-    sendAction('pause', video.currentTime);
-    video.pause();
+    setPlaying(false);
+    if (!applyingRemote.current) sendAction('pause', video.currentTime);
   }
 
   function handleSeek() {
     const video = videoRef.current;
     if (!video) return;
-    sendAction('seek', video.currentTime);
+    if (!applyingRemote.current) sendAction('seek', video.currentTime);
   }
 
   return (
@@ -230,7 +237,7 @@ export default function PartyRoom() {
             <div style={{ width: '100%', maxWidth: '100%' }}>
               <video
                 ref={videoRef}
-                src={isHls ? undefined : videoUrl}
+                src={isHls && Hls.isSupported() ? undefined : videoUrl}
                 playsInline
                 preload="auto"
                 crossOrigin="anonymous"

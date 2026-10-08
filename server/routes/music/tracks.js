@@ -1,6 +1,7 @@
 const { getDb } = require('../../db');
 const { authMiddleware, mediaAuth, adminMiddleware } = require('../../auth');
 const { MEDIA_DIRS } = require('../../utils');
+const { pipeline } = require('stream/promises');
 const { nanoid } = require('nanoid');
 const path = require('path');
 const fs = require('fs');
@@ -86,14 +87,18 @@ async function tracksRoutes(fastify) {
 
     const safeName = trackTitle.replace(/[/\\?%*:|"<>]/g, '_') + ext;
     const filePath = path.join(targetDir, safeName);
-    const buffer = await data.toBuffer();
-    fs.writeFileSync(filePath, buffer);
+    await pipeline(data.file, fs.createWriteStream(filePath));
+    if (data.file.truncated) {
+      await fs.promises.rm(filePath, { force: true });
+      return reply.code(413).send({ error: 'The audio file is too large.' });
+    }
+    const fileSize = (await fs.promises.stat(filePath)).size;
 
     const id = nanoid();
     const db = getDb();
     db.prepare(
       'INSERT INTO music_tracks (id, album_id, track_number, title, artist, file_path, file_size) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, albumId, trackNum, trackTitle, trackArtist, filePath, buffer.length);
+    ).run(id, albumId, trackNum, trackTitle, trackArtist, filePath, fileSize);
 
     return db.prepare('SELECT * FROM music_tracks WHERE id = ?').get(id);
   });

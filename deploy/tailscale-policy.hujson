@@ -1,0 +1,16 @@
+// Example for a DEDICATED tailnet. Review existing rules before replacing them.
+// Replace the administrator address. Assign server/viewer tags to the nodes.
+{
+  "groups": { "group:admins": ["replace-with-your-admin@example.com"] },
+  "tagOwners": {
+    "tag:mediapiayer-server": ["group:admins"],
+    "tag:mediapiayer-viewer": ["group:admins"]
+  },
+  "grants": [
+    { "src": ["tag:mediapiayer-viewer"], "dst": ["tag:mediapiayer-server"], "ip": ["tcp:443"] },
+    { "src": ["group:admins"], "dst": ["tag:mediapiayer-server"], "ip": ["tcp:443", "tcp:22"] }
+  ],
+  "tests": [
+    { "src": "tag:mediapiayer-viewer", "accept": ["tag:mediapiayer-server:443"], "deny": ["tag:mediapiayer-server:22", "tag:mediapiayer-server:3000"] }
+  ]
+}

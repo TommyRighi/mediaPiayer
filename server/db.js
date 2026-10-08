@@ -2,7 +2,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
-const DB_PATH = path.join(__dirname, '..', 'data', 'mediapiayer.db');
+const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '..', 'data', 'mediapiayer.db');
 
 let db;
 
@@ -138,6 +138,23 @@ function migrate() {
   if (!tokenVersionCol) {
     db.exec(`ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0`);
   }
+
+  if (!db.prepare("PRAGMA table_info(users)").all().some(c => c.name === 'history_enabled')) {
+    db.exec('ALTER TABLE users ADD COLUMN history_enabled INTEGER NOT NULL DEFAULT 0');
+  }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id);
+    CREATE TABLE IF NOT EXISTS auth_invites (
+      code_hash TEXT PRIMARY KEY,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER
+    );
+  `);
 
   const transcodeCol = db.prepare("PRAGMA table_info(media)").all().find(c => c.name === 'transcode_status');
   if (!transcodeCol) {
@@ -314,6 +331,9 @@ function migrate() {
   }
 
   db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_media_created ON media(created_at DESC, id);
+    CREATE INDEX IF NOT EXISTS idx_watch_recent ON watch_progress(user_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_music_album_tracks ON music_tracks(album_id, track_number);
     CREATE INDEX IF NOT EXISTS idx_subtitles_media_id ON subtitles(media_id);
     CREATE INDEX IF NOT EXISTS idx_subtitles_episode_id ON subtitles(episode_id);
     CREATE INDEX IF NOT EXISTS idx_audio_tracks_media_id ON audio_tracks(media_id);

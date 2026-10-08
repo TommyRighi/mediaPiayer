@@ -1,4 +1,4 @@
-const { execFile, spawn } = require('child_process');
+const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 const fs = require('fs');
@@ -28,7 +28,7 @@ async function probeStreams(filePath) {
       title: (s.tags && s.tags.title) || null,
     }));
   } catch (err) {
-    console.error(`probeStreams failed for ${filePath}:`, err.message);
+    console.error('Media stream probing failed.');
     return [];
   }
 }
@@ -61,18 +61,18 @@ function audioTrackLabel(track, index) {
   return `Track ${index + 1}${ch}${codec}`;
 }
 
-function extractSubtitle(inputPath, streamIndex, outputPath) {
-  return new Promise((resolve, reject) => {
+async function extractSubtitle(inputPath, streamIndex, outputPath) {
     const args = [
       '-y',
       '-i', inputPath,
-      '-map', `0:s:${streamIndex}`,
+      '-map', `0:${streamIndex}`,
       '-c:s', 'srt',
       outputPath,
     ];
-    const proc = spawn('ffmpeg', args);
+    const proc = await require('./background').spawnBackground('ffmpeg', ['-threads', '1', ...args]);
+    return new Promise((resolve, reject) => {
     let stderr = '';
-    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.stderr.on('data', (d) => { stderr = (stderr + d.toString()).slice(-4000); });
     proc.on('close', (code) => {
       if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
         resolve();
@@ -127,7 +127,7 @@ async function extractAndStoreAll(filePath, mediaId, episodeId) {
       storeAudioTrack(mediaId, episodeId, audioStreams[i], i);
       results.audioTracks++;
     } catch (err) {
-      console.error(`Failed to store audio track ${i} for ${mediaId}:`, err.message);
+      console.error('Failed to store an audio track.');
     }
   }
 
@@ -158,6 +158,7 @@ async function extractAndStoreAll(filePath, mediaId, episodeId) {
       const subFileName = `${fileBase}.${lang.code}${subExt}`;
       const subOutputPath = path.join(fileDir, subFileName);
 
+      let extractIdx = stream.index;
       try {
         let useStreamIdx = mappedIdx;
 
@@ -167,7 +168,7 @@ async function extractAndStoreAll(filePath, mediaId, episodeId) {
           if (useStreamIdx < 0) useStreamIdx = mappedIdx;
         }
 
-        const extractIdx = (() => {
+        extractIdx = (() => {
           let count = 0;
           for (const s of streams) {
             if (s.codec_type === 'subtitle') {
@@ -198,7 +199,7 @@ async function extractAndStoreAll(filePath, mediaId, episodeId) {
           results.subtitles++;
         }
       } catch (err) {
-        console.error(`Failed to extract subtitle stream ${i} (ffmpeg index ${extractIdx}) for ${filePath}:`, err.message);
+        console.error('Subtitle extraction failed.');
       }
     }
   }

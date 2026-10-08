@@ -9,15 +9,28 @@ export default function AdminPage() {
   const [musicScanResult, setMusicScanResult] = useState(null);
   const [lastAction, setLastAction] = useState(null);
   const [media, setMedia] = useState([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [libraryError, setLibraryError] = useState('');
   const [storageInfo, setStorageInfo] = useState(null);
   const [newDir, setNewDir] = useState('');
   const [storageMsg, setStorageMsg] = useState(null);
   const [dragIndex, setDragIndex] = useState(null);
 
   useEffect(() => {
-    api.media.list().then((data) => setMedia(data.media)).catch(() => {});
+    api.media.list().then(data => { setMedia(data.media); setHasMore(data.hasMore); }).catch(err => setLibraryError(err.message));
     api.admin.getStorage().then(setStorageInfo).catch(() => {});
   }, []);
+
+  async function loadMore() {
+    setLoadingMore(true); setLibraryError('');
+    try {
+      const data = await api.media.list({ offset: media.length, limit: 36 });
+      setMedia(previous => [...previous, ...data.media]);
+      setHasMore(data.hasMore);
+    } catch (err) { setLibraryError(err.message); }
+    finally { setLoadingMore(false); }
+  }
 
   async function handleScan() {
     setScanning(true);
@@ -28,6 +41,7 @@ export default function AdminPage() {
       setScanResult(result);
       const data = await api.media.list();
       setMedia(data.media);
+      setHasMore(data.hasMore);
     } catch (err) {
       setScanResult({ error: err.message });
     }
@@ -43,6 +57,7 @@ export default function AdminPage() {
       setScanResult(result);
       const data = await api.media.list();
       setMedia(data.media);
+      setHasMore(data.hasMore);
     } catch (err) {
       setScanResult({ error: err.message });
     }
@@ -270,7 +285,9 @@ export default function AdminPage() {
         </div>
 
         <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
-          <h2 className="text-lg font-medium mb-4">Media Library ({media.length})</h2>
+          <h2 className="text-lg font-medium mb-4">Media Library · {media.length} loaded</h2>
+          {libraryError && <p role="alert" className="text-red-300 mb-4">{libraryError} <button className="underline" onClick={loadMore}>Try again</button></p>}
+          {hasMore && <button className="jf-btn-secondary mb-4" disabled={loadingMore} onClick={loadMore}>{loadingMore ? 'Loading…' : 'Load more titles'}</button>}
           {media.length === 0 ? (
             <p className="text-gray-500 text-sm">No media in library yet.</p>
           ) : (

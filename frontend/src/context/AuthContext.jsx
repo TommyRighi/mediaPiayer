@@ -1,28 +1,20 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { api, setToken, clearToken, getToken, clearMediaToken, refreshMediaToken } from '../api';
+import { api, clearToken, clearMediaToken, refreshMediaToken } from '../api';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const initialToken = getToken();
-  const [loading, setLoading] = useState(!!initialToken);
+  const [loading, setLoading] = useState(true);
+  const [socialEnabled, setSocialEnabled] = useState(false);
+
+  useEffect(() => { api.auth.config().then(data => setSocialEnabled(data.socialEnabled === true)).catch(() => {}); }, []);
 
   useEffect(() => {
-    if (!initialToken) return;
-    // Fetch the profile and a fresh media token in parallel, and gate the
-    // first paint on BOTH. Media URLs (posters, backdrops, video) now use
-    // only the short-lived media token — never the long-lived main token —
-    // so we must have one before rendering any media, otherwise every image
-    // would 401 during the fetch window.
     (async () => {
       try {
-        const [meData] = await Promise.all([
-          api.auth.me(),
-          refreshMediaToken(1).catch((err) => {
-            console.error('Initial media token fetch failed; media may not load until the next refresh', err);
-          }),
-        ]);
+        const meData = await api.auth.me();
+        await refreshMediaToken(1);
         setUser(meData.user);
       } catch {
         clearToken();
@@ -30,7 +22,6 @@ export function AuthProvider({ children }) {
         setLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -45,24 +36,34 @@ export function AuthProvider({ children }) {
 
   async function login(email, password) {
     const data = await api.auth.login(email, password);
-    setToken(data.token);
+    try { await refreshMediaToken(); } catch { /* Playback offers a retry. */ }
     setUser(data.user);
-    try { await refreshMediaToken(); } catch { /* ignore */ }
     return data;
   }
 
-  async function register(email, password, displayName) {
-    const data = await api.auth.register(email, password, displayName);
-    setToken(data.token);
+  async function register(email, password, displayName, inviteCode) {
+    const data = await api.auth.register(email, password, displayName, inviteCode);
+    try { await refreshMediaToken(); } catch { /* Playback offers a retry. */ }
     setUser(data.user);
-    try { await refreshMediaToken(); } catch { /* ignore */ }
     return data;
   }
 
-  function logout() {
-    clearToken();
-    clearMediaToken();
-    setUser(null);
+  useEffect(() => {
+    const expire = () => { clearToken(); clearMediaToken(); setUser(null); };
+    window.addEventListener('auth-expired', expire);
+    return () => window.removeEventListener('auth-expired', expire);
+  }, []);
+
+  async function logout() {
+    try { await api.auth.logout(); } catch { /* Clear this view even if the server is temporarily unavailable. */ } finally {
+      clearToken(); clearMediaToken(); setUser(null);
+    }
+  }
+
+  async function updatePrivacy(historyEnabled) {
+    const data = await api.auth.privacy(historyEnabled);
+    setUser(data.user);
+    return data;
   }
 
   async function updateProfile(data) {
@@ -73,16 +74,15 @@ export function AuthProvider({ children }) {
 
   async function changePassword(currentPassword, newPassword) {
     const data = await api.auth.changePassword(currentPassword, newPassword);
-    setToken(data.token);
+    try { await refreshMediaToken(); } catch { /* Playback offers a retry. */ }
     setUser(data.user);
-    try { await refreshMediaToken(); } catch { /* ignore */ }
     return data;
   }
 
   const isAdmin = user?.role === 'admin';
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile, changePassword, isAdmin }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile, updatePrivacy, changePassword, isAdmin, socialEnabled }}>
       {children}
     </AuthContext.Provider>
   );

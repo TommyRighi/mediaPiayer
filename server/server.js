@@ -1,5 +1,5 @@
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
 const Fastify = require('fastify');
 const cors = require('@fastify/cors');
 const helmet = require('@fastify/helmet');
@@ -19,27 +19,35 @@ const transcodeRoutes = require('./routes/transcode');
 const downloadRoutes = require('./routes/downloads');
 const requestRoutes = require('./routes/requests');
 const musicRoutes = require('./routes/music/index');
-const { MEDIA_DIRS } = require('./utils');
 const { getDb } = require('./db');
 const { resumePendingJobs } = require('./transcode');
 const { startPolling } = require('./transmission');
+const background = require('./background');
+
+const { securityHooks, logSerializers } = require('./security');
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = process.env.HOST || '127.0.0.1';
 
 const fastify = Fastify({
+  disableRequestLogging: true,
   logger: {
+    serializers: logSerializers,
     level: 'info',
-    transport: {
-      target: 'pino-pretty',
-      options: { colorize: true },
-    },
-    redact: ['req.headers.authorization', 'req.query.token'],
+    ...(process.env.NODE_ENV !== 'production' ? { transport: { target: 'pino-pretty', options: { colorize: true } } } : {}),
+    redact: ['req.headers.authorization', 'req.headers.cookie', 'token', 'password'],
   },
   bodyLimit: 1024 * 1024,
 });
 
 async function start() {
+  if (process.env.NODE_ENV === 'production' && !process.env.PUBLIC_ORIGIN) throw new Error('PUBLIC_ORIGIN is required in production');
+  securityHooks(fastify);
+  fastify.setErrorHandler((err, request, reply) => {
+    const code = err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
+    if (code === 500) request.log.error({ err }, 'Request failed');
+    reply.code(code).send({ error: code === 500 ? 'Errore del server. Riprova più tardi.' : err.message });
+  });
 await fastify.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
@@ -50,7 +58,8 @@ await fastify.register(rateLimit, {
              /^\/api\/episodes\/[^/]+\/video$/.test(urlPath) ||
              /^\/api\/episodes\/[^/]+\/hls\//.test(urlPath) ||
              /^\/api\/subtitles\//.test(urlPath) ||
-             urlPath.startsWith('/assets/');
+             urlPath.startsWith('/assets/') ||
+             /^\/api\/music\/(albums\/[^/]+\/cover|tracks\/[^/]+\/stream)$/.test(urlPath);
     },
   });
   const corsOrigin = process.env.NODE_ENV === 'production'
@@ -61,11 +70,11 @@ await fastify.register(rateLimit, {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "blob:", "data:"],
         mediaSrc: ["'self'", "blob:"],
-        connectSrc: ["'self'", "ws:", "wss:"],
+        connectSrc: ["'self'", ...(process.env.PUBLIC_ORIGIN || '').split(',').filter(Boolean).map(origin => origin.replace(/^http/, 'ws'))],
         fontSrc: ["'self'"],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
@@ -76,14 +85,30 @@ await fastify.register(rateLimit, {
   await fastify.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 * 1024 } });
   await fastify.register(websocket);
 
+  fastify.addHook('onSend', async (request, reply, payload) => {
+    if (!request.user || request.headers['x-background-request'] === '1') return payload;
+    const pathname = request.url.split('?')[0];
+    if (/\/(video|stream)$|\/hls\//.test(pathname)) {
+      background.touchActivity(30000);
+    } else if (!/\/transcode\/|\/watch\/(activity|progress)|\/music\/(progress|youtube\/status)|\/download|\/auth\/(online|media-token)/.test(pathname)) {
+      background.touchActivity();
+    }
+    return payload;
+  });
+
   await fastify.register(statik, {
     root: path.join(__dirname, 'dist'),
     prefix: '/',
     decorateReply: true,
+    preCompressed: true,
+    setHeaders: (response, filePath) => {
+      response.header('Cache-Control', filePath.includes(`${path.sep}assets${path.sep}`)
+        ? 'public, max-age=31536000, immutable' : 'no-cache');
+    },
   });
 
   fastify.setNotFoundHandler((request, reply) => {
-    if (path.extname(request.url)) {
+    if (request.url.startsWith('/api/') || path.extname(request.url.split('?')[0])) {
       return reply.status(404).send({ error: 'Not found' });
     }
     return reply.sendFile('index.html');
@@ -102,27 +127,20 @@ await fastify.register(rateLimit, {
   await fastify.register(musicRoutes);
 
   resumePendingJobs();
+  const queueTimer = setInterval(resumePendingJobs, 30000);
+  queueTimer.unref();
   startPolling();
 
-  if (!process.env.ADMIN_INVITE_CODE) {
-    fastify.log.warn('ADMIN_INVITE_CODE is not set — the first registered user will become admin automatically. Set ADMIN_INVITE_CODE in .env for production.');
-  }
-
-  fastify.addHook('onResponse', (request, reply, done) => {
-    if (request.user && request.user.id) {
-      try {
-        const db = getDb();
-        db.prepare('UPDATE users SET last_active_at = datetime(\'now\') WHERE id = ?').run(request.user.id);
-      } catch (err) {
-        fastify.log.warn({ err }, 'Failed to update last_active_at');
-      }
-    }
-    done();
-  });
+  // Presence is intentionally not recorded, including when social features are enabled.
 
   await fastify.listen({ port: PORT, host: HOST });
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.once(signal, () => {
+      background.shutdown();
+      fastify.close().finally(() => process.exit(0));
+    });
+  }
   fastify.log.info(`Server running at http://${HOST}:${PORT}`);
-  fastify.log.info(`Media directories: ${MEDIA_DIRS.join(', ')}`);
 }
 
 start().catch((err) => {

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
@@ -13,56 +13,17 @@ function formatTime(seconds) {
 export default function AudioPlayer() {
   const player = usePlayer();
   const navigate = useNavigate();
-  const progressRef = useRef(null);
-  const [dragging, setDragging] = useState(false);
-  const [dragTime, setDragTime] = useState(0);
   const [showVol, setShowVol] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
 
   const { currentTrack, playing, currentTime, duration, volume, shuffle, repeat } = player;
 
-  useEffect(() => {
-    if (!dragging) return;
-    const handleMove = (e) => {
-      const bar = progressRef.current;
-      if (!bar) return;
-      const rect = bar.getBoundingClientRect();
-      const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-      const pct = Math.max(0, Math.min(1, x / rect.width));
-      setDragTime(pct * duration);
-    };
-    const handleUp = () => {
-      player.seek(dragTime);
-      setDragging(false);
-    };
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleUp);
-    window.addEventListener('touchmove', handleMove);
-    window.addEventListener('touchend', handleUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleUp);
-      window.removeEventListener('touchmove', handleMove);
-      window.removeEventListener('touchend', handleUp);
-    };
-  }, [dragging, dragTime, duration, player]);
-
   if (!currentTrack) return null;
 
-  const progress = duration > 0 ? ((dragging ? dragTime : currentTime) / duration) * 100 : 0;
 
   return (
     <div className="ap-bar">
-      <div className="ap-progress-bar" ref={progressRef}
-        onMouseDown={(e) => {
-          setDragging(true);
-          const rect = progressRef.current.getBoundingClientRect();
-          const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-          setDragTime(pct * duration);
-        }}
-      >
-        <div className="ap-progress-fill" style={{ width: `${progress}%` }} />
-      </div>
+      <input type="range" className="ap-progress-bar" aria-label="Playback position" min="0" max={duration || 1} step="1" value={currentTime} onChange={event => player.seek(Number(event.target.value))} style={{ accentColor: 'var(--jf-primary)' }} />
 
       <div className="ap-content">
         <div className="ap-track-info" onClick={() => currentTrack.album_id && navigate(`/music/album/${currentTrack.album_id}`)}>
@@ -106,7 +67,7 @@ export default function AudioPlayer() {
         </div>
 
         <div className="ap-right">
-          <span className="ap-time">{formatTime(dragging ? dragTime : currentTime)}</span>
+          <span className="ap-time">{formatTime(currentTime)}</span>
           <span className="ap-time-sep">/</span>
           <span className="ap-time">{formatTime(duration)}</span>
 
@@ -122,7 +83,7 @@ export default function AudioPlayer() {
             </button>
             {showVol && (
               <div className="ap-volume-slider">
-                <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => player.setVolume(parseFloat(e.target.value))} className="ap-volume-input" />
+                <input aria-label="Volume" type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => player.setVolume(parseFloat(e.target.value))} className="ap-volume-input" />
               </div>
             )}
           </div>
@@ -137,21 +98,21 @@ export default function AudioPlayer() {
         <div className="ap-queue-panel">
           <div className="ap-queue-header">
             <span className="ap-queue-title">Queue</span>
-            <button className="ap-btn" onClick={() => setShowQueue(false)}>
+            <button aria-label="Close queue" className="ap-btn" onClick={() => setShowQueue(false)}>
               <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>
             </button>
           </div>
           <div className="ap-queue-list">
             {player.queue.map((track, idx) => (
-              <div
-                key={track.id}
-                className={`ap-queue-item ${idx === player.currentIndex ? 'ap-queue-item-active' : ''}`}
+              <button
+                key={`${track.id}:${idx}`}
+                className={`w-full text-left ap-queue-item ${idx === player.currentIndex ? 'ap-queue-item-active' : ''}`}
                 onClick={() => { player.playQueue(player.queue, idx); }}
               >
                 <span className="ap-queue-num">{idx + 1}</span>
                 <span className="ap-queue-track">{track.title}</span>
                 <span className="ap-queue-artist">{track.artist || 'Unknown'}</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>

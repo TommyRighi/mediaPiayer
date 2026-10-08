@@ -8,6 +8,8 @@ const fs = require('fs');
 async function mediaRoutes(fastify) {
   fastify.get('/api/media', { preHandler: authMiddleware }, async (request) => {
     const { type, genre, search } = request.query;
+    const limit = Math.min(100, Math.max(1, Number.parseInt(request.query.limit, 10) || 36));
+    const offset = Math.max(0, Number.parseInt(request.query.offset, 10) || 0);
     const db = getDb();
 
     let sql = 'SELECT * FROM media WHERE 1=1';
@@ -22,18 +24,20 @@ async function mediaRoutes(fastify) {
       params.push(`%${genre}%`);
     }
     if (search) {
-      sql += ' AND title LIKE ?';
-      params.push(`%${search}%`);
+      sql += ' AND (title LIKE ? OR genre LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`);
     }
 
-    sql += ' ORDER BY created_at DESC';
-    const media = db.prepare(sql).all(...params);
+    sql += ' ORDER BY created_at DESC, id LIMIT ? OFFSET ?';
+    const rows = db.prepare(sql).all(...params, limit + 1, offset);
+    const hasMore = rows.length > limit;
+    const media = rows.slice(0, limit);
 
     for (const item of media) {
       item.hls_available = !!(item.file_path && item.file_path.endsWith('.m3u8'));
     }
 
-    if (request.user && media.length > 0) {
+    if (request.user?.history_enabled && media.length > 0) {
       const movieIds = media.filter(m => m.type === 'movie').map(m => m.id);
       if (movieIds.length > 0) {
         const progressMap = getDb().prepare(
@@ -52,7 +56,7 @@ async function mediaRoutes(fastify) {
       }
     }
 
-    return { media };
+    return { media, hasMore };
   });
 
   fastify.get('/api/media/:id/poster', { preHandler: mediaAuth }, async (request, reply) => {
@@ -79,7 +83,7 @@ async function mediaRoutes(fastify) {
 
     reply.headers({
       'Content-Type': getImageMimeType(filePath),
-      'Cache-Control': 'public, max-age=86400',
+      'Cache-Control': 'private, no-store',
       'Referrer-Policy': 'no-referrer',
     });
     return fs.createReadStream(filePath);
@@ -109,7 +113,7 @@ async function mediaRoutes(fastify) {
 
     reply.headers({
       'Content-Type': getImageMimeType(filePath),
-      'Cache-Control': 'public, max-age=86400',
+      'Cache-Control': 'private, no-store',
       'Referrer-Policy': 'no-referrer',
     });
     return fs.createReadStream(filePath);
@@ -138,7 +142,7 @@ async function mediaRoutes(fastify) {
         seasons[ep.season_number].push(ep);
       }
 
-      if (request.user && episodes.length > 0) {
+      if (request.user?.history_enabled && episodes.length > 0) {
         const epIds = episodes.map(ep => ep.id);
         const progressRows = db.prepare(
           `SELECT episode_id, progress_seconds, completed FROM watch_progress
@@ -156,7 +160,7 @@ async function mediaRoutes(fastify) {
       media.seasons = seasons;
     }
 
-    if (request.user) {
+    if (request.user?.history_enabled) {
       const progress = db.prepare(
         'SELECT progress_seconds, completed FROM watch_progress WHERE user_id = ? AND media_id = ? AND episode_id IS NULL'
       ).get(request.user.id, media.id);
@@ -268,7 +272,7 @@ async function mediaRoutes(fastify) {
     if (ext === '.srt') {
       reply.headers({
         'Content-Type': 'text/vtt; charset=utf-8',
-        'Cache-Control': 'public, max-age=86400',
+        'Cache-Control': 'private, no-store',
         'Referrer-Policy': 'no-referrer',
       });
       return srtToVtt(content);
@@ -276,7 +280,7 @@ async function mediaRoutes(fastify) {
 
     reply.headers({
       'Content-Type': 'text/vtt; charset=utf-8',
-      'Cache-Control': 'public, max-age=86400',
+      'Cache-Control': 'private, no-store',
       'Referrer-Policy': 'no-referrer',
     });
     return content;
@@ -333,32 +337,25 @@ async function mediaRoutes(fastify) {
       return reply.status(404).send({ error: 'Media not found' });
     }
 
-    if (media.type === 'series') {
-      const episodes = db.prepare('SELECT file_path FROM episodes WHERE series_id = ?').all(media.id);
-      for (const ep of episodes) {
-        if (ep.file_path && isWithinAnyDir(ep.file_path, MEDIA_DIRS) && fs.existsSync(ep.file_path)) {
-          fs.unlinkSync(ep.file_path);
-          if (ep.file_path.endsWith('.m3u8')) {
-            try { fs.rmSync(path.dirname(ep.file_path), { recursive: true, force: true }); } catch {}
-          }
-        }
-      }
-    } else if (media.file_path && isWithinAnyDir(media.file_path, MEDIA_DIRS) && fs.existsSync(media.file_path)) {
-      fs.unlinkSync(media.file_path);
-      if (media.file_path.endsWith('.m3u8')) {
-        try { fs.rmSync(path.dirname(media.file_path), { recursive: true, force: true }); } catch {}
-      }
+    if (['pending', 'converting'].includes(media.transcode_status) ||
+        db.prepare("SELECT id FROM episodes WHERE series_id = ? AND transcode_status IN ('pending', 'converting')").get(media.id) ||
+        db.prepare("SELECT id FROM downloads WHERE media_id = ? AND status IN ('downloading', 'importing')").get(media.id)) {
+      return reply.code(409).send({ error: 'Wait for preparation or download to finish before deleting this title.' });
     }
-
-    if (media.poster_path && isWithinAnyDir(media.poster_path, MEDIA_DIRS) && fs.existsSync(media.poster_path)) {
-      fs.unlinkSync(media.poster_path);
+    const episodeFiles = db.prepare('SELECT file_path FROM episodes WHERE series_id = ?').all(media.id);
+    db.transaction(() => {
+      db.prepare('DELETE FROM watch_requests WHERE media_id = ? OR party_id IN (SELECT id FROM watch_parties WHERE media_id = ?)').run(media.id, media.id);
+      db.prepare('DELETE FROM watch_parties WHERE media_id = ? OR episode_id IN (SELECT id FROM episodes WHERE series_id = ?)').run(media.id, media.id);
+      db.prepare('DELETE FROM media WHERE id = ?').run(media.id);
+    })();
+    // Only remove files after the database has accepted the whole operation.
+    const files = [...episodeFiles.map(ep => ep.file_path), media.file_path, media.poster_path, media.backdrop_path].filter(Boolean);
+    for (const file of files) {
+      if (!isWithinAnyDir(file, MEDIA_DIRS)) continue;
+      try {
+        await fs.promises.rm(file.endsWith('.m3u8') ? path.dirname(file) : file, { recursive: file.endsWith('.m3u8'), force: true });
+      } catch (err) { request.log.warn({ err }, 'Media removed from catalog; file cleanup failed'); }
     }
-    if (media.backdrop_path && isWithinAnyDir(media.backdrop_path, MEDIA_DIRS) && fs.existsSync(media.backdrop_path)) {
-      fs.unlinkSync(media.backdrop_path);
-    }
-
-    db.prepare('DELETE FROM watch_parties WHERE media_id = ? OR episode_id IN (SELECT id FROM episodes WHERE series_id = ?)').run(request.params.id, request.params.id);
-    db.prepare('DELETE FROM media WHERE id = ?').run(request.params.id);
     return { success: true };
   });
 }

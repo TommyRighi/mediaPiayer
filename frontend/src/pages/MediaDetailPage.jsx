@@ -2,13 +2,18 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
-import ImageCropModal from '../components/ImageCropModal';
+import { lazy, Suspense } from 'react';
+import PageState from '../components/PageState';
+const ImageCropModal = lazy(() => import('../components/ImageCropModal'));
 
 export default function MediaDetailPage() {
   const { id } = useParams();
-  const { isAdmin } = useAuth();
+  const { isAdmin, socialEnabled } = useAuth();
   const navigate = useNavigate();
   const [media, setMedia] = useState(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [reload, setReload] = useState(0);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [uploadingImageType, setUploadingImageType] = useState(null);
@@ -32,9 +37,9 @@ export default function MediaDetailPage() {
         setDownloadAvailable(data.available);
         setDownloadStatus(data.download);
         if (data.download && (data.download.status === 'downloading' || data.download.status === 'importing')) {
-          downloadPollRef.current = setTimeout(poll, 3000);
+          downloadPollRef.current = setTimeout(poll, 10000);
         } else if (data.download && data.download.status === 'completed') {
-          const refreshed = await api.media.get(id);
+          const refreshed = await api.media.get(id, true);
           if (cancelled) return;
           setMedia(refreshed.media);
           setForm({
@@ -58,7 +63,7 @@ export default function MediaDetailPage() {
         year: data.media.year || '',
         genre: data.media.genre,
       });
-    });
+    }).catch(err => { if (!cancelled) setError(err.message); });
 
     if (isAdmin) {
       poll();
@@ -68,7 +73,7 @@ export default function MediaDetailPage() {
       cancelled = true;
       if (downloadPollRef.current) clearTimeout(downloadPollRef.current);
     };
-  }, [id, isAdmin]);
+  }, [id, isAdmin, reload]);
 
   async function handleStartDownload() {
     if (!magnetUri.trim()) return;
@@ -77,14 +82,9 @@ export default function MediaDetailPage() {
       await api.downloads.start(id, magnetUri.trim());
       setDownloadStatus({ status: 'downloading', progress: 0, magnetUri: magnetUri.trim() });
       setMagnetUri('');
-      const pollId = setTimeout(async () => {
-        const data = await api.downloads.status(id);
-        setDownloadAvailable(data.available);
-        setDownloadStatus(data.download);
-      }, 2000);
-      downloadPollRef.current = pollId;
+      setReload(n => n + 1);
     } catch (err) {
-      alert(err.message);
+      setError(err.message);
     }
     setDownloadStarting(false);
   }
@@ -94,21 +94,25 @@ export default function MediaDetailPage() {
       await api.downloads.cancel(id);
       setDownloadStatus(null);
     } catch (err) {
-      alert(err.message);
+      setError(err.message);
     }
   }
 
   async function handleSave() {
-    await api.media.update(id, form);
-    const data = await api.media.get(id);
-    setMedia(data.media);
-    setEditing(false);
+    setBusy(true); setError('');
+    try {
+      await api.media.update(id, form);
+      const data = await api.media.get(id);
+      setMedia(data.media); setEditing(false);
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
   }
 
   async function handleDelete() {
-    if (!confirm('Delete this media permanently?')) return;
-    await api.media.delete(id);
-    navigate('/');
+    if (!confirm('Delete this video and its files permanently?')) return;
+    setBusy(true); setError('');
+    try { await api.media.delete(id); navigate('/'); }
+    catch (err) { setError(err.message); setBusy(false); }
   }
 
   async function handleStartParty() {
@@ -116,7 +120,7 @@ export default function MediaDetailPage() {
       const { party } = await api.parties.create(media.id, null);
       navigate(`/scene/${party.id}`);
     } catch (err) {
-      alert(err.message);
+      setError(err.message);
     }
   }
 
@@ -140,11 +144,9 @@ export default function MediaDetailPage() {
       const formData = new FormData();
       formData.append('type', imageType);
       formData.append('file', croppedBlob, `${imageType}.webp`);
-      const token = localStorage.getItem('token');
       const data = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', `/api/media/${id}/image`);
-        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
         xhr.upload.onprogress = (ev) => {
           if (ev.lengthComputable) {
             setImageUploadProgress(Math.round((ev.loaded / ev.total) * 100));
@@ -171,7 +173,7 @@ export default function MediaDetailPage() {
       setMedia(data.media);
       setImageVersion((v) => v + 1);
     } catch (err) {
-      alert(err.message);
+      setError(err.message);
     }
     setUploadingImageType(null);
     setImageUploadProgress(0);
@@ -187,24 +189,22 @@ export default function MediaDetailPage() {
       formData.append('label', file.name.match(/\.([a-z]{2,3})\./)?.[1]?.toUpperCase() || 'English');
       if (episodeId) formData.append('episodeId', episodeId);
       formData.append('file', file);
-      const token = localStorage.getItem('token');
       const res = await fetch(`/api/media/${id}/subtitles/upload`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      const refreshed = await api.media.get(id);
+      const refreshed = await api.media.get(id, true);
       setMedia(refreshed.media);
     } catch (err) {
-      alert(err.message);
+      setError(err.message);
     }
     setUploadingSub(null);
   }
 
   if (!media) {
-    return <div className="flex items-center justify-center min-h-[60vh]" style={{ color: 'var(--jf-text-muted)' }}>Loading...</div>;
+    return <PageState busy={!error} title={error ? 'Unable to load this title' : 'Loading details'} message={error} retry={error ? () => { setError(''); setReload(n => n + 1); } : undefined} />;
   }
 
   const isConverting = media.transcode_status === 'pending' || media.transcode_status === 'converting';
@@ -241,7 +241,7 @@ export default function MediaDetailPage() {
                     <input type="text" placeholder="Genre" value={form.genre} onChange={(e) => setForm({ ...form, genre: e.target.value })} className="jf-input" />
                   </div>
                   <div className="flex gap-3">
-                    <button onClick={handleSave} className="jf-btn-primary">Save</button>
+                    <button disabled={busy} onClick={handleSave} className="jf-btn-primary">Save</button>
                     <button onClick={() => setEditing(false)} className="jf-btn-secondary">Cancel</button>
                   </div>
                   <div className="flex flex-wrap gap-3 mt-2">
@@ -384,12 +384,13 @@ export default function MediaDetailPage() {
                       onClick={(e) => { if (isConverting) e.preventDefault(); }}
                     >
                       <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                      Play
+                      {media.watchProgress?.progress_seconds > 0 && !media.watchProgress.completed ? 'Resume' : 'Play'}
                     </Link>
-                    <button onClick={handleStartParty} className="jf-btn-secondary flex items-center gap-2">
+                    {media.type === 'movie' && media.watchProgress?.progress_seconds > 0 && !isConverting && <Link to={`/watch/${media.id}?start=0`} className="jf-btn-secondary">Start over</Link>}
+                    {socialEnabled && <button disabled={isConverting} onClick={handleStartParty} className="jf-btn-secondary flex items-center gap-2">
                       <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" /></svg>
                       Watch Party
-                    </button>
+                    </button>}
                     {isAdmin && (
                       <button onClick={() => setEditing(true)} className="jf-btn-outline flex items-center gap-2">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" /></svg>
@@ -398,7 +399,7 @@ export default function MediaDetailPage() {
                     )}
                     {isAdmin && (
                       <button
-                        onClick={handleDelete}
+                        disabled={busy} onClick={handleDelete}
                         className="jf-btn-outline flex items-center gap-2"
                         style={{ borderColor: 'var(--jf-error)', color: '#ef5350' }}
                       >
@@ -489,12 +490,12 @@ export default function MediaDetailPage() {
       </div>
 
       {cropModal && (
-        <ImageCropModal
+        <Suspense fallback={<div role="status">Loading image editor…</div>}><ImageCropModal
           imageSrc={cropModal.imageSrc}
           imageType={cropModal.imageType}
           onCropComplete={handleCroppedImage}
           onClose={() => setCropModal(null)}
-        />
+        /></Suspense>
       )}
     </div>
   );

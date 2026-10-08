@@ -1,23 +1,25 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
-import LoginPage from './pages/LoginPage';
-import BrowsePage from './pages/BrowsePage';
-import MediaDetailPage from './pages/MediaDetailPage';
-import WatchPage from './pages/WatchPage';
-import UploadPage from './pages/UploadPage';
-import PartyRoom from './pages/PartyRoom';
-import JoinPartyPage from './pages/JoinPartyPage';
-import AdminPage from './pages/AdminPage';
-import ProfilePage from './pages/ProfilePage';
-import MusicPage from './pages/MusicPage';
-import AlbumDetailPage from './pages/AlbumDetailPage';
-import PlaylistDetailPage from './pages/PlaylistDetailPage';
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const BrowsePage = lazy(() => import('./pages/BrowsePage'));
+const MediaDetailPage = lazy(() => import('./pages/MediaDetailPage'));
+const WatchPage = lazy(() => import('./pages/WatchPage'));
+const UploadPage = lazy(() => import('./pages/UploadPage'));
+const PartyRoom = lazy(() => import('./pages/PartyRoom'));
+const JoinPartyPage = lazy(() => import('./pages/JoinPartyPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const MusicPage = lazy(() => import('./pages/MusicPage'));
+const AlbumDetailPage = lazy(() => import('./pages/AlbumDetailPage'));
+const PlaylistDetailPage = lazy(() => import('./pages/PlaylistDetailPage'));
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <div className="flex items-center justify-center min-h-screen text-gray-400">Loading...</div>;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" state={{ from: location.pathname + location.search }} replace />;
   return children;
 }
 
@@ -30,9 +32,12 @@ function AdminRoute({ children }) {
 }
 
 function PublicRoute({ children }) {
+  const location = useLocation();
+  const from = location.state?.from;
+  const destination = typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') && !from.startsWith('/login') ? from : '/';
   const { user, loading } = useAuth();
   if (loading) return <div className="flex items-center justify-center min-h-screen text-gray-400">Loading...</div>;
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to={destination} replace />;
   return children;
 }
 
@@ -40,6 +45,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <Suspense fallback={<div className="min-h-[60vh] grid place-items-center" role="status">Loading…</div>}>
         <Routes>
           <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
@@ -57,7 +63,9 @@ export default function App() {
           </Route>
           <Route path="/watch/:mediaId" element={<ProtectedRoute><WatchPage /></ProtectedRoute>} />
           <Route path="/watch/:mediaId/:episodeId" element={<ProtectedRoute><WatchPage /></ProtectedRoute>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </AuthProvider>
     </BrowserRouter>
   );

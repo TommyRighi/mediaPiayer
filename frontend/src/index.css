@@ -870,3 +870,22 @@ video::-webkit-media-controls {
   color: var(--jf-text-muted);
   flex-shrink: 0;
 }
+/* Controls remain discoverable on touch and when navigating by keyboard. */
+:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.jf-track-action { min-width: 44px; min-height: 44px; }
+.jf-loading-line { height: 3px; border-radius: 2px; background: linear-gradient(90deg, var(--jf-surface), var(--jf-primary), var(--jf-surface)); background-size: 200% 100%; animation: jf-loading 1.5s linear infinite; }
+@keyframes jf-loading { to { background-position: -200% 0; } }
+@media (hover: none) { .group\/row > button { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+.ap-queue-panel { max-width: calc(100vw - 32px); }
+@media (max-width: 639px) {
+  .ap-content { gap: 8px; padding: 0 8px; }
+  .ap-cover { width: 36px; height: 36px; }
+  .ap-track-info { gap: 8px; }
+  .ap-controls { gap: 2px; }
+  .ap-right { flex: 0; }
+  .ap-time, .ap-time-sep, .ap-volume-wrapper { display: none; }
+}

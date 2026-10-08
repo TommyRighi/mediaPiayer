@@ -1,0 +1,32 @@
+[Unit]
+Description=MediaPiayer private media server
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mediapiayer
+Group=mediapiayer
+WorkingDirectory=/opt/mediapiayer
+EnvironmentFile=/etc/mediapiayer.env
+ExecStart=/usr/bin/node /opt/mediapiayer/server/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+ReadWritePaths=/opt/mediapiayer/data /srv/mediapiayer
+LimitNOFILE=8192
+TasksMax=256
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target

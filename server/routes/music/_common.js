@@ -38,7 +38,7 @@ function streamAudio(request, reply, filePath) {
   const cacheHeaders = {
     'Accept-Ranges': 'bytes',
     'Content-Type': contentType,
-    'Cache-Control': 'public, max-age=3600',
+    'Cache-Control': 'private, no-store',
     'ETag': etag,
     'Last-Modified': stat.mtime.toUTCString(),
   };
@@ -56,11 +56,11 @@ function streamAudio(request, reply, filePath) {
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
       'Content-Length': chunkSize,
     });
-    return fs.createReadStream(filePath, { start, end, highWaterMark: 1024 * 1024 });
+    return fs.createReadStream(filePath, { start, end, highWaterMark: 64 * 1024 });
   }
 
   reply.headers({ ...cacheHeaders, 'Content-Length': fileSize });
-  return fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 });
+  return fs.createReadStream(filePath, { highWaterMark: 64 * 1024 });
 }
 
 function scanMusicFolder() {

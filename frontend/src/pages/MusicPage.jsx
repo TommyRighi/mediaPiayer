@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { usePlayer } from '../context/PlayerContext';
@@ -9,7 +9,7 @@ function AlbumCard({ album }) {
     <Link to={`/music/album/${album.id}`} className="block group">
       <div className="relative aspect-square rounded-lg overflow-hidden mb-2" style={{ background: 'var(--jf-surface-elevated)' }}>
         {album.cover_path ? (
-          <img src={api.music.albums.coverUrl(album.id)} alt={album.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+          <img loading="lazy" decoding="async" src={api.music.albums.coverUrl(album.id)} alt={album.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
         ) : (
           <div className="w-full h-full flex items-center justify-center" style={{ color: 'var(--jf-text-muted)' }}>
             <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14.5c-2.49 0-4.5-2.01-4.5-4.5S9.51 7.5 12 7.5s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5zm0-5.5c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z" /></svg>
@@ -24,21 +24,21 @@ function AlbumCard({ album }) {
 
 function TrackRow({ track, index, onPlay, isFavorite, onToggleFavorite }) {
   return (
-    <div className="flex items-center gap-3 px-3 py-2 rounded group hover:bg-white/5 transition-colors cursor-pointer" onClick={onPlay}>
+    <div className="flex items-center gap-3 px-3 py-2 rounded group hover:bg-white/5 transition-colors">
       <span className="w-8 text-center text-sm" style={{ color: 'var(--jf-text-muted)' }}>{index + 1}</span>
       <button
         onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
-        className={`opacity-0 group-hover:opacity-100 transition-opacity`}
+        aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"} aria-pressed={isFavorite} className="jf-track-action p-2"
         style={{ color: isFavorite ? 'var(--jf-primary)' : 'var(--jf-text-muted)' }}
       >
         <svg viewBox="0 0 24 24" width="16" height="16" fill={isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
           <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
         </svg>
       </button>
-      <div className="flex-1 min-w-0">
+      <button onClick={onPlay} aria-label={`Play ${track.title}`} className="flex-1 min-w-0 text-left py-2">
         <div className="text-sm font-medium truncate" style={{ color: 'var(--jf-text-primary)' }}>{track.title}</div>
         <div className="text-xs truncate" style={{ color: 'var(--jf-text-secondary)' }}>{track.artist || 'Unknown'}</div>
-      </div>
+      </button>
       {track.duration > 0 && (
         <span className="text-xs" style={{ color: 'var(--jf-text-muted)' }}>{formatDuration(track.duration)}</span>
       )}
@@ -62,6 +62,10 @@ export default function MusicPage() {
   const [playlists, setPlaylists] = useState([]);
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [reload, setReload] = useState(0);
+  const downloadTimer = useRef(null);
+  useEffect(() => () => clearInterval(downloadTimer.current), []);
   const [showNewPlaylist, setShowNewPlaylist] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [ytUrl, setYtUrl] = useState('');
@@ -73,26 +77,25 @@ export default function MusicPage() {
   const tab = searchParams.get('tab') || 'albums';
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setLoading(true); setError('');
       try {
-        const [a, t, p, f] = await Promise.all([
-          api.music.albums.list(),
-          api.music.tracks.list(),
-          api.music.playlists.list(),
-          api.music.favorites.list(),
-        ]);
-        setAlbums(Array.isArray(a) ? a : []);
-        setTracks(Array.isArray(t) ? t : []);
-        setPlaylists(Array.isArray(p) ? p : []);
-        setFavorites(Array.isArray(f) ? f : []);
-      } catch (e) {
-        console.error(e);
-      }
-      setLoading(false);
-    }
-    load();
-  }, []);
+        if (tab === 'albums') {
+          const data = await api.music.albums.list();
+          if (!cancelled) setAlbums(data);
+        } else if (tab === 'playlists') {
+          const data = await api.music.playlists.list();
+          if (!cancelled) setPlaylists(data);
+        } else {
+          const [data, favs] = await Promise.all([tab === 'tracks' ? api.music.tracks.list() : Promise.resolve([]), api.music.favorites.list()]);
+          if (!cancelled) { setTracks(data); setFavorites(favs); }
+        }
+      } catch (err) { if (!cancelled) setError(err.message); }
+      finally { if (!cancelled) setLoading(false); }
+    }, 0);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [tab, reload]);
 
   const favoriteIds = new Set(favorites.map(f => f.id));
 
@@ -124,6 +127,7 @@ export default function MusicPage() {
     try {
       const result = await api.music.youtube.download(ytUrl, ytTitle, ytArtist);
       const poll = setInterval(async () => {
+        try {
         const status = await api.music.youtube.status(result.id);
         setYtStatus(status);
         if (status.status === 'completed' || status.status === 'failed') {
@@ -137,7 +141,9 @@ export default function MusicPage() {
             setTracks(Array.isArray(t) ? t : []);
           }
         }
-      }, 2000);
+        } catch (err) { clearInterval(poll); setYtDownloading(false); setYtStatus({ status: 'failed', error: err.message }); }
+      }, 10000);
+      downloadTimer.current = poll;
     } catch (e) {
       setYtStatus({ status: 'failed', error: e.message });
       setYtDownloading(false);
@@ -145,10 +151,8 @@ export default function MusicPage() {
   };
 
   const handleScan = async () => {
-    await api.music.scan();
-    const [a, t] = await Promise.all([api.music.albums.list(), api.music.tracks.list()]);
-    setAlbums(Array.isArray(a) ? a : []);
-    setTracks(Array.isArray(t) ? t : []);
+    try { await api.music.scan(); setReload(n => n + 1); }
+    catch (err) { setError(err.message); }
   };
 
   return (
@@ -204,6 +208,7 @@ export default function MusicPage() {
           </div>
           {ytStatus && (
             <div className="mt-2 text-sm" style={{ color: ytStatus.status === 'completed' ? '#4CAF50' : ytStatus.status === 'failed' ? 'var(--jf-error)' : 'var(--jf-text-secondary)' }}>
+              {ytStatus.status === 'paused' && 'Paused while the server is in use. Preparation will resume automatically.'}
               {ytStatus.status === 'downloading' && `Downloading... ${ytStatus.progress?.toFixed(0) || 0}%`}
               {ytStatus.status === 'completed' && 'Download complete!'}
               {ytStatus.status === 'failed' && `Failed: ${ytStatus.error}`}
@@ -212,6 +217,7 @@ export default function MusicPage() {
         </div>
       )}
 
+      {error && <div role="alert" className="mb-6">{error} <button className="jf-btn-secondary" onClick={() => setReload(n => n + 1)}>Try again</button></div>}
       {loading ? (
         <div className="text-center py-16" style={{ color: 'var(--jf-text-muted)' }}>Loading...</div>
       ) : (

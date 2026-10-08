@@ -25,7 +25,7 @@ async function seriesRoutes(fastify) {
       seasons[ep.season_number].push(ep);
     }
 
-    if (request.user && episodes.length > 0) {
+    if (request.user?.history_enabled && episodes.length > 0) {
       const epIds = episodes.map(ep => ep.id);
       const progressRows = db.prepare(
         `SELECT episode_id, progress_seconds, completed FROM watch_progress

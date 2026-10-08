@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import MediaCard from '../components/MediaCard';
+import PageState from '../components/PageState';
+import { useAuth } from '../context/AuthContext';
 
 function MediaRow({ title, items, variant = 'portrait' }) {
   const scrollRef = useRef(null);
@@ -28,7 +30,7 @@ function MediaRow({ title, items, variant = 'portrait' }) {
       <div className="relative group/row">
         {canScrollLeft && (
           <button
-            onClick={() => scrollBy(-1)}
+            aria-label={`Scroll ${title} left`} onClick={() => scrollBy(-1)}
             className="absolute left-0 top-0 bottom-0 w-10 z-10 flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity"
             style={{ background: 'linear-gradient(to right, var(--jf-bg), transparent)' }}
           >
@@ -42,12 +44,12 @@ function MediaRow({ title, items, variant = 'portrait' }) {
           onScroll={(e) => updateScroll(e.currentTarget)}
         >
           {items.map((item) => (
-            <MediaCard key={item.id} media={item} progress={item.watchProgress} variant={variant} />
+            <MediaCard key={`${item.id}:${item.episode_id || "movie"}`} media={item} progress={item.watchProgress} variant={variant} />
           ))}
         </div>
         {canScrollRight && (
           <button
-            onClick={() => scrollBy(1)}
+            aria-label={`Scroll ${title} right`} onClick={() => scrollBy(1)}
             className="absolute right-0 top-0 bottom-0 w-10 z-10 flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity"
             style={{ background: 'linear-gradient(to left, var(--jf-bg), transparent)' }}
           >
@@ -60,56 +62,59 @@ function MediaRow({ title, items, variant = 'portrait' }) {
 }
 
 export default function BrowsePage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { isAdmin } = useAuth();
   const [media, setMedia] = useState([]);
   const [history, setHistory] = useState([]);
-  const [featured, setFeatured] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const typeFilter = searchParams.get('type');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(0);
+  const [attempt, setAttempt] = useState(0);
+  const typeFilter = searchParams.get('type') || '';
+  const searchQuery = searchParams.get('q') || '';
+  const queryKey = `${typeFilter}:${searchQuery}`;
+  const lastQuery = useRef(queryKey);
 
   useEffect(() => {
-    api.media.list().then((data) => {
-      setMedia(data.media);
-      if (data.media.length > 0) {
-        setFeatured(data.media[Math.floor(Math.random() * data.media.length)]);
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      setError('');
+      const changed = lastQuery.current !== queryKey;
+      const offset = changed ? 0 : page * 36;
+      if (changed) { setPage(0); lastQuery.current = queryKey; }
+      try {
+        const data = await api.media.list({ type: typeFilter, search: searchQuery.trim(), limit: 36, offset });
+        if (cancelled) return;
+        setMedia(previous => offset ? [...previous, ...data.media] : data.media);
+        setHasMore(data.hasMore);
+      } catch (err) {
+        if (!cancelled) setError(err.message);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    });
-    api.watch.history().then((data) => setHistory(data.history)).catch(() => {});
+    }, searchQuery ? 250 : 0);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [typeFilter, searchQuery, queryKey, page, attempt]);
+
+  useEffect(() => {
+    api.watch.history().then(data => setHistory(data.history)).catch(() => {});
   }, []);
 
-  const filteredMedia = useMemo(() => {
-    let result = media;
-    if (typeFilter) {
-      result = result.filter((m) => m.type === typeFilter);
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((m) =>
-        m.title.toLowerCase().includes(q) ||
-        (m.genre && m.genre.toLowerCase().includes(q))
-      );
-    }
-    return result;
-  }, [media, typeFilter, searchQuery]);
+  const featured = media[0];
+  const movies = media.filter(m => m.type === 'movie');
+  const series = media.filter(m => m.type === 'series');
+  const continueWatching = history.filter(h => !h.completed && h.type);
+  const retry = () => setAttempt(n => n + 1);
 
-  const movies = filteredMedia.filter((m) => m.type === 'movie');
-  const series = filteredMedia.filter((m) => m.type === 'series');
-  const continueWatching = history.filter((h) => !h.completed && h.type);
-
-  if (media.length === 0) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh] px-4">
-        <div className="text-center">
-          <h2 className="text-2xl md:text-3xl font-medium mb-3" style={{ color: 'var(--jf-text-primary)' }}>Welcome to MediaPiayer</h2>
-          <p style={{ color: 'var(--jf-text-muted)' }} className="mb-6">Your library is empty. Upload some media to get started.</p>
-          <Link to="/upload" className="jf-btn-primary inline-block">
-            Upload Media
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  if (loading && media.length === 0 && !typeFilter && !searchQuery) return <PageState busy title="Loading your library" message="Finding your movies, series and saved positions." />;
+  if (error && media.length === 0) return <PageState title="Unable to load your library" message={error} retry={retry} />;
+  if (!loading && !error && media.length === 0 && !typeFilter && !searchQuery) return (
+    <PageState title="Your library is ready for its first video" message={isAdmin ? 'Upload a movie or scan your media folders to get started.' : 'Your administrator has not added any videos yet.'}>
+      {isAdmin && <Link to="/upload" className="jf-btn-primary inline-block">Upload media</Link>}
+    </PageState>
+  );
 
   return (
     <div>
@@ -145,34 +150,35 @@ export default function BrowsePage() {
 
       <div className={(featured && !typeFilter && !searchQuery) ? '-mt-8 md:-mt-16 relative z-10' : 'pt-4'}>
         <div className="px-4 md:px-8 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1 max-w-md">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="relative flex-1 w-full max-w-md">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="var(--jf-text-muted)" className="absolute left-3 top-1/2 -translate-y-1/2"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" /></svg>
               <input
                 type="text"
                 placeholder="Search titles, genres..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="jf-input pl-10"
+                aria-label="Search titles and genres"
+                onChange={(e) => { const next = new URLSearchParams(searchParams); if (e.target.value) next.set('q', e.target.value); else next.delete('q'); setPage(0); setSearchParams(next, { replace: true }); }}
+                className="jf-input" style={{ paddingLeft: 40 }}
               />
             </div>
             <div className="flex gap-1">
               <Link
-                to="/"
+                to={searchQuery ? `/?q=${encodeURIComponent(searchQuery)}` : "/"}
                 className={`px-3 py-2 rounded text-sm font-medium transition ${!typeFilter ? '' : 'opacity-60'}`}
                 style={!typeFilter ? { background: 'var(--jf-primary)', color: 'var(--jf-bg)' } : { color: 'var(--jf-text-secondary)' }}
               >
                 All
               </Link>
               <Link
-                to="/?type=movie"
+                to={`/?type=movie${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}`}
                 className={`px-3 py-2 rounded text-sm font-medium transition ${typeFilter === 'movie' ? '' : 'opacity-60'}`}
                 style={typeFilter === 'movie' ? { background: 'var(--jf-primary)', color: 'var(--jf-bg)' } : { color: 'var(--jf-text-secondary)' }}
               >
                 Movies
               </Link>
               <Link
-                to="/?type=series"
+                to={`/?type=series${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}`}
                 className={`px-3 py-2 rounded text-sm font-medium transition ${typeFilter === 'series' ? '' : 'opacity-60'}`}
                 style={typeFilter === 'series' ? { background: 'var(--jf-primary)', color: 'var(--jf-bg)' } : { color: 'var(--jf-text-secondary)' }}
               >
@@ -189,16 +195,18 @@ export default function BrowsePage() {
             type: h.type,
             poster_path: h.poster_path,
             backdrop_path: h.backdrop_path,
-            duration: 0,
+            duration: h.duration,
             watchProgress: h,
             watchUrl: h.episode_id ? `/watch/${h.media_id}/${h.episode_id}` : `/watch/${h.media_id}`,
           }))} variant="backdrop" />
         )}
+        {error && <div className="px-4 md:px-8 mb-4" role="alert">{error} <button className="jf-btn-secondary" onClick={retry}>Try again</button></div>}
         {movies.length > 0 && <MediaRow title="Movies" items={movies} />}
         {series.length > 0 && <MediaRow title="Series" items={series} />}
-        {filteredMedia.length === 0 && searchQuery && (
+        {hasMore && <div className="px-4 md:px-8 pb-8"><button className="jf-btn-secondary" disabled={loading || !!error} onClick={() => setPage(n => n + 1)}>{loading ? 'Loading…' : 'Load more'}</button></div>}
+        {!loading && media.length === 0 && (
           <div className="text-center py-16" style={{ color: 'var(--jf-text-muted)' }}>
-            No results for "{searchQuery}"
+            {searchQuery ? `No results for "${searchQuery}"` : `No ${typeFilter === 'series' ? 'series' : 'movies'} yet.`}
           </div>
         )}
       </div>

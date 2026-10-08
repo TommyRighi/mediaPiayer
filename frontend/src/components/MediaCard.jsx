@@ -7,7 +7,7 @@ export default function MediaCard({ media, progress, variant = 'portrait' }) {
     : `/series/${media.id}`);
 
   const progressPct = progress && progress.progress_seconds && media.duration
-    ? (progress.progress_seconds / media.duration) * 100
+    ? Math.min(100, (progress.progress_seconds / media.duration) * 100)
     : 0;
 
   const watched = progress && progress.completed;
@@ -47,6 +47,8 @@ export default function MediaCard({ media, progress, variant = 'portrait' }) {
           </div>
         </div>
         <p className="text-sm font-medium mt-1.5 truncate" style={{ color: 'var(--jf-text-primary)' }}>{media.title}</p>
+        {media.episode_number && <p className="text-xs mt-1 text-neutral-400">S{media.season_number} E{media.episode_number} · {media.episode_title}</p>}
+        {progressPct > 0 && !watched && <p className="text-xs mt-1 text-neutral-400">{Math.max(1, Math.ceil((media.duration - progress.progress_seconds) / 60))} min left</p>}
         {progressPct > 0 && !watched && (
           <div className="h-1 rounded-full overflow-hidden mt-1" style={{ background: 'rgba(255,255,255,0.12)' }}>
             <div className="h-full rounded-full" style={{ width: `${progressPct}%`, background: 'var(--jf-primary)' }} />

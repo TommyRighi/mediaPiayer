@@ -1,153 +1,87 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, hasMediaToken, refreshMediaToken } from '../api';
 import VideoPlayer from '../components/VideoPlayer';
+import PageState from '../components/PageState';
 
 export default function WatchPage() {
   const { mediaId, episodeId } = useParams();
+  const [params] = useSearchParams();
+  // Reset all playback state on episode changes, including resume and failures.
+  return <WatchSession key={`${mediaId}:${episodeId}:${params.get('start')}`} mediaId={mediaId} episodeId={episodeId} restart={params.get('start') === '0'} />;
+}
+
+function WatchSession({ mediaId, episodeId, restart }) {
   const navigate = useNavigate();
-  const [media, setMedia] = useState(null);
-  const [episode, setEpisode] = useState(null);
-  const [transcodeStatus, setTranscodeStatus] = useState(null);
-  const [mediaTokenReady, setMediaTokenReady] = useState(hasMediaToken());
-  const [mediaTokenError, setMediaTokenError] = useState(false);
-
-  // Media URLs require a short-lived media token (never the main auth
-  // token, to avoid leaking a long-lived credential via query string).
-  // Block playback until one is confirmed available.
-  useEffect(() => {
-    if (mediaTokenReady) return;
-    refreshMediaToken()
-      .then(() => setMediaTokenReady(true))
-      .catch(() => setMediaTokenError(true));
-  }, [mediaTokenReady]);
-
-  const hlsAvailable = episodeId
-    ? episode?.hls_available
-    : media?.hls_available;
-
-  const videoUrl = episodeId
-    ? (hlsAvailable ? api.media.episodeHlsUrl(episodeId) : api.media.episodeVideoUrl(episodeId))
-    : (hlsAvailable ? api.media.hlsUrl(mediaId) : api.media.videoUrl(mediaId));
+  const [data, setData] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const [progressError, setProgressError] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     let timer;
-
-    function poll() {
-      api.transcode.status(mediaId, episodeId).then((data) => {
-        setTranscodeStatus(data);
-        if (data.status === 'converting' || data.status === 'pending') {
-          timer = setTimeout(poll, 5000);
+    async function load() {
+      try {
+        const [result, conversion] = await Promise.all([
+          api.media.get(mediaId, true), api.transcode.status(mediaId, episodeId),
+          hasMediaToken() ? Promise.resolve() : refreshMediaToken(),
+        ]);
+        if (cancelled) return;
+        const media = result.media;
+        const episode = episodeId ? Object.values(media.seasons || {}).flat().find(ep => ep.id === episodeId) : null;
+        if (episodeId && !episode) throw new Error('This episode is no longer available.');
+        const item = episode || media;
+        const pending = ['pending', 'converting', 'paused'].includes(conversion.status);
+        setStatus(conversion);
+        if (pending) {
+          timer = setTimeout(load, 10000);
+          return;
         }
-      }).catch(() => {});
-    }
-
-    api.media.get(mediaId).then((data) => {
-      setMedia(data.media);
-      if (episodeId && data.media.seasons) {
-        for (const season of Object.values(data.media.seasons)) {
-          const ep = season.find((e) => e.id === episodeId);
-          if (ep) { setEpisode(ep); break; }
+        if (conversion.status === 'failed' || item.transcode_status === 'failed') {
+          throw new Error('This video could not be prepared. Ask the administrator to retry its conversion.');
         }
+        if (!item.file_path) throw new Error('This video has not been uploaded yet.');
+        const src = episodeId
+          ? (item.hls_available ? api.media.episodeHlsUrl(episodeId) : api.media.episodeVideoUrl(episodeId))
+          : (item.hls_available ? api.media.hlsUrl(mediaId) : api.media.videoUrl(mediaId));
+        setData({ media, episode, src });
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Check your connection and try again.');
       }
-    }).catch((err) => { console.error('Failed to load media:', err); });
+    }
+    load();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [mediaId, episodeId, attempt]);
 
-    poll();
-    return () => { clearTimeout(timer); };
+  const back = () => navigate(data?.media.type === 'series' || episodeId ? `/series/${mediaId}` : `/movie/${mediaId}`);
+  const saveProgress = useCallback((seconds, completed, duration) => {
+    api.watch.progress(mediaId, episodeId || null, seconds, completed, duration)
+      .then(() => setProgressError(false)).catch(() => setProgressError(true));
   }, [mediaId, episodeId]);
 
-  const subtitles = useMemo(() => {
-    if (episodeId && episode?.subtitles) return episode.subtitles;
-    if (!episodeId && media?.subtitles) return media.subtitles;
-    return [];
-  }, [episode, media, episodeId]);
-
-  const audioTracks = useMemo(() => {
-    if (episodeId && episode?.audio_tracks) return episode.audio_tracks;
-    if (!episodeId && media?.audio_tracks) return media.audio_tracks;
-    return [];
-  }, [episode, media, episodeId]);
-
-  const nextEpisode = useMemo(() => {
-    if (!media || !media.seasons || !episodeId) return null;
-    const allEpisodes = Object.keys(media.seasons)
-      .sort((a, b) => a - b)
-      .flatMap((s) => media.seasons[s]);
-    const idx = allEpisodes.findIndex((e) => e.id === episodeId);
-    if (idx >= 0 && idx < allEpisodes.length - 1) return allEpisodes[idx + 1];
-    return null;
-  }, [media, episodeId]);
-
-  const title = episode
-    ? `${media?.title} - S${episode.season_number}E${episode.episode_number} ${episode.title}`
-    : media?.title || 'Loading...';
-
-  const handleProgress = useCallback((seconds, completed, duration) => {
-    api.watch.progress(mediaId, episodeId || null, seconds, completed, duration).catch(() => {});
-  }, [mediaId, episodeId]);
-
-  const initialTime = useMemo(() => {
-    const prog = episode?.watchProgress || media?.watchProgress;
-    return prog?.progress_seconds || 0;
-  }, [episode, media]);
-
-  if (transcodeStatus && (transcodeStatus.status === 'pending' || transcodeStatus.status === 'converting')) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
-        <div className="text-center">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="#f59e0b" className="mx-auto mb-4 animate-spin">
-            <path d="M12 4V2A10 10 0 0 0 2 12h2a8 8 0 0 1 8-8z" />
-          </svg>
-          <h2 className="text-xl font-medium mb-2" style={{ color: 'var(--jf-text-primary)' }}>Converting Video</h2>
-          <p className="mb-4" style={{ color: 'var(--jf-text-muted)' }}>
-            This video is being converted to a browser-compatible format (H.264).
-          </p>
-          {transcodeStatus.progress > 0 && (
-            <div className="max-w-xs mx-auto">
-              <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.12)' }}>
-                <div
-                  className="h-full rounded-full transition-all duration-1000"
-                  style={{ width: `${transcodeStatus.progress}%`, background: '#f59e0b' }}
-                />
-              </div>
-              <p className="text-sm mt-2" style={{ color: 'var(--jf-text-muted)' }}>{transcodeStatus.progress}%</p>
-            </div>
-          )}
-          <button onClick={() => navigate(-1)} className="jf-btn-secondary mt-6">Go Back</button>
-        </div>
-      </div>
-    );
+  if (error) return <PageState title="Unable to start playback" message={error} retry={() => { setError(''); setAttempt(n => n + 1); }}><button className="jf-btn-secondary ml-3" onClick={back}>Back to details</button></PageState>;
+  if (!data) {
+    const paused = status?.status === 'paused';
+    const preparing = ['pending', 'converting', 'paused'].includes(status?.status);
+    const reasons = { playback: 'Preparation will resume when other playback finishes.', activity: 'Preparation will resume when the server is idle.', memory: 'Waiting for more available memory.', temperature: 'Waiting for the device to cool down.' };
+    return <PageState busy={!paused} title={preparing ? paused ? 'Preparation paused' : 'Preparing your video' : 'Loading video'} message={paused ? reasons[status.reason] : preparing ? 'You can leave this page. Your video will be ready after preparation finishes.' : 'Getting your saved position and playback options.'}>
+      {preparing && <><progress className="w-full mb-3" max="100" value={status.progress || 0} aria-label="Video preparation" /><p className="text-sm mb-6">{status.progress || 0}%</p><button className="jf-btn-secondary" onClick={back}>Back to library</button></>}
+    </PageState>;
   }
-
-  if (!mediaTokenReady) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
-        <div className="text-center">
-          {mediaTokenError ? (
-            <>
-              <h2 className="text-xl font-medium mb-2" style={{ color: 'var(--jf-text-primary)' }}>Unable to start playback</h2>
-              <p className="mb-4" style={{ color: 'var(--jf-text-muted)' }}>Couldn't obtain a media access token. Check your connection and try again.</p>
-              <button onClick={() => setMediaTokenError(false)} className="jf-btn-secondary mt-2">Retry</button>
-            </>
-          ) : (
-            <p style={{ color: 'var(--jf-text-muted)' }}>Preparing playback…</p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <VideoPlayer
-      src={videoUrl}
-      title={title}
-      subtitles={subtitles}
-      audioTracks={audioTracks}
-      onBack={() => navigate(-1)}
-      initialTime={initialTime}
-      onProgress={handleProgress}
-      onNextEpisode={nextEpisode ? () => navigate(`/watch/${mediaId}/${nextEpisode.id}`) : null}
-      nextEpisodeLabel={nextEpisode ? `Next: S${nextEpisode.season_number}E${nextEpisode.episode_number}` : null}
-    />
-  );
+  const { media, episode, src } = data;
+  const item = episode || media;
+  const progress = item.watchProgress;
+  const episodes = Object.keys(media.seasons || {}).sort((a, b) => a - b).flatMap(s => media.seasons[s]);
+  const index = episodes.findIndex(ep => ep.id === episodeId);
+  const next = index >= 0 ? episodes[index + 1] : null;
+  return <>
+    {progressError && <div className="fixed top-14 left-4 z-50 bg-neutral-900 px-4 py-2 rounded text-sm" role="status">Unable to save your position. Retrying during playback.</div>}
+    <VideoPlayer src={src} title={episode ? `${media.title} · S${episode.season_number} E${episode.episode_number} · ${episode.title}` : media.title}
+      subtitles={item.subtitles} audioTracks={item.audio_tracks} onBack={back}
+      initialTime={restart || progress?.completed ? 0 : progress?.progress_seconds || 0}
+      onProgress={saveProgress} onNextEpisode={next ? () => navigate(`/watch/${mediaId}/${next.id}`) : null}
+      nextEpisodeLabel={next ? `Next: S${next.season_number} E${next.episode_number}` : null} />
+  </>;
 }

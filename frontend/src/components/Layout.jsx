@@ -66,7 +66,7 @@ export default function Layout() {
                     Profile
                   </button>
                   <button
-                    onClick={() => { logout(); navigate('/login'); }}
+                    onClick={async () => { await logout(); navigate('/login'); }}
                     className="block w-full text-left px-4 py-2.5 text-sm hover:bg-white/10"
                     style={{ color: 'var(--jf-text-primary)' }}
                   >

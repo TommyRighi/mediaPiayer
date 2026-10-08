@@ -42,3 +42,7 @@ media/series/*
 
 # TypeScript
 *.tsbuildinfo
+
+# Desktop binaries and installer output
+desktop/bin/
+desktop/release/

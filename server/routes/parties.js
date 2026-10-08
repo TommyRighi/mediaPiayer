@@ -1,6 +1,6 @@
 const { getDb } = require('../db');
 const { authMiddleware } = require('../auth');
-const { verifyToken } = require('../auth');
+const { authenticate, readAuthToken } = require('../auth');
 const { nanoid } = require('nanoid');
 
 const partySockets = new Map();
@@ -13,6 +13,11 @@ function generateInviteCode() {
 }
 
 async function partyRoutes(fastify) {
+  let shuttingDown = false;
+  fastify.addHook('onClose', async () => {
+    shuttingDown = true;
+    for (const sockets of partySockets.values()) for (const socket of sockets) socket.terminate();
+  });
   fastify.post('/api/parties', { preHandler: authMiddleware }, async (request, reply) => {
     const { mediaId, episodeId } = request.body || {};
 
@@ -65,9 +70,13 @@ async function partyRoutes(fastify) {
 
   fastify.get('/api/parties/:id', { preHandler: authMiddleware }, async (request, reply) => {
     const db = getDb();
+    const membership = db.prepare('SELECT id FROM party_members WHERE party_id = ? AND user_id = ?').get(request.params.id, request.user.id);
+    if (!membership) return reply.status(404).send({ error: 'Party not found' });
     const party = db.prepare(
-      `SELECT wp.*, m.title AS media_title, m.type AS media_type, m.poster_path, m.file_path AS media_file_path,
-              e.title AS episode_title, e.file_path AS episode_file_path
+      `SELECT wp.*, m.title AS media_title, m.type AS media_type, m.poster_path,
+              CASE WHEN m.file_path LIKE '%.m3u8' THEN 1 ELSE 0 END AS media_hls_available,
+              CASE WHEN e.file_path LIKE '%.m3u8' THEN 1 ELSE 0 END AS episode_hls_available,
+              e.title AS episode_title
        FROM watch_parties wp
        JOIN media m ON wp.media_id = m.id
        LEFT JOIN episodes e ON wp.episode_id = e.id
@@ -94,20 +103,13 @@ async function partyRoutes(fastify) {
   });
 
   fastify.get('/api/parties/:id/ws', { websocket: true }, (socket, request) => {
-    const params = new URLSearchParams(request.url.split('?')[1] || '');
-    const token = params.get('token');
-
-    if (!token) {
-      socket.close(4001, 'Missing token');
-      return;
-    }
-
     let userId;
-    let partyId = request.params.id;
+    const partyId = request.params.id;
     try {
-      const payload = verifyToken(token);
-      userId = payload.sub;
-
+      const user = authenticate(readAuthToken(request));
+      userId = user.id;
+      socket.authUserId = userId;
+      socket.authSessionId = user.sessionId;
       const db = getDb();
       const member = db.prepare(
         'SELECT id FROM party_members WHERE party_id = ? AND user_id = ?'
@@ -127,6 +129,17 @@ async function partyRoutes(fastify) {
       socket.close(4001, 'Invalid token');
       return;
     }
+
+    const expiresAt = getDb().prepare('SELECT expires_at FROM auth_sessions WHERE id = ?').get(socket.authSessionId).expires_at;
+    // Revocations from the local users CLI also invalidate already-open sockets.
+    const revocationTimer = setInterval(() => {
+      try { authenticate(readAuthToken(request)); } catch { socket.close(4001, 'Session revoked'); }
+    }, 5000);
+    revocationTimer.unref();
+    socket.once('close', () => clearInterval(revocationTimer));
+    const expiryTimer = setTimeout(() => socket.close(4001, 'Session expired'), Math.max(0, expiresAt * 1000 - Date.now()));
+    expiryTimer.unref();
+    socket.once('close', () => clearTimeout(expiryTimer));
 
     if (!partySockets.has(partyId)) {
       partySockets.set(partyId, new Set());
@@ -227,6 +240,7 @@ async function partyRoutes(fastify) {
         }
       }
 
+      if (shuttingDown) return;
       const db3 = getDb();
       const linkedReq = db3.prepare(
         `SELECT (SELECT COUNT(*) FROM request_responses rr WHERE rr.request_id = wr.id AND rr.response = 'approved') AS approved_count

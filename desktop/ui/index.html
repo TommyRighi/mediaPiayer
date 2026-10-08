@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Collega MediaPiayer</title><link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <aside><span class="brand">▷ mediaPiayer</span><div><p class="eyebrow">LA TUA BIBLIOTECA, OVUNQUE</p><h1>Un invito.<br>Il tuo cinema.</h1><p>Collega l’app al Raspberry e ritrova film, serie e musica in un unico posto.</p></div><p class="footnote">Collegamento privato · Nessuna VPN di sistema</p></aside>
+  <section aria-labelledby="heading"><p class="step">PRIMO COLLEGAMENTO</p><h2 id="heading">Entra nella biblioteca.</h2><p class="intro">Usa l’indirizzo e la chiave ricevuti da chi ti ha invitato.</p>
+    <form id="connect-form">
+      <label for="target">Indirizzo della biblioteca</label><input id="target" type="url" placeholder="https://raspberry.rete.ts.net" required autocomplete="off" spellcheck="false">
+      <label for="auth-key">Chiave di collegamento <span>Solo la prima volta</span></label><input id="auth-key" type="password" placeholder="tskey-auth-…" autocomplete="off" spellcheck="false">
+      <p class="hint">La chiave registra questa app e non viene salvata. Lascia il campo vuoto per accedere con il tuo account Tailscale.</p>
+      <button id="connect" type="submit">Collega la biblioteca <span>→</span></button>
+    </form>
+    <p id="status" role="status" aria-live="polite"></p>
+    <button id="login" type="button" hidden>Apri accesso Tailscale</button>
+    <button id="reset" class="secondary" type="button" hidden>Ripristina collegamento</button>
+    <p class="privacy">La visione passa attraverso una connessione cifrata. Dopo il collegamento accederai con il tuo account mediaPiayer.</p>
+  </section>
+</main><script src="setup.js"></script>
+</body>
+</html>
