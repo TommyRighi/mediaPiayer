@@ -180,22 +180,26 @@ https://<raspberry>.<tailnet>.ts.net
 
 With `HOST=127.0.0.1`, enable private HTTPS using `sudo tailscale serve --bg 3000` and use the exact URL shown by `tailscale serve status`. Set `PUBLIC_ORIGIN` to that origin. No router port forwarding is required. Never use Funnel for private sharing.
 
-## Optional SSH menu
+## Admin console over SSH
 
-The repository includes `setup-ssh-menu.sh` for creating a local terminal menu helper:
-
-```bash
-./setup-ssh-menu.sh
-./ssh-menu.sh
-```
-
-By default, this only writes helper scripts inside the project directory and does not modify shell startup files. To auto-launch the menu for interactive SSH sessions, opt in explicitly:
+The Italian terminal console handles guided configuration, dependencies, users,
+invites, services, library scans, torrent downloads, backups and updates:
 
 ```bash
-./setup-ssh-menu.sh --install-shell-hook
+npm run admin
+npm run admin -- --status
 ```
 
-The opt-in shell hook adds a marked block to `~/.bashrc`.
+It also works before `.env` exists or backend dependencies are installed. Database
+operations need backend dependencies; scans and torrent imports need a running
+server. Use `--env /path/to/config.env` for an existing deployment.
+
+To launch it automatically in interactive Bash SSH sessions, opt in with
+`./setup-ssh-menu.sh --install-shell-hook`. Remove the hook with
+`./setup-ssh-menu.sh --uninstall-shell-hook`.
+
+See the [SSH admin console guide](docs/admin-cli.md) for first setup, existing
+system services, Transmission and backup/restore behavior.
 
 ## Publishing
 

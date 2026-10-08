@@ -17,7 +17,8 @@
     "desktop:install": "npm ci --prefix desktop",
     "desktop:start": "npm start --prefix desktop",
     "desktop:build": "npm run dist --prefix desktop",
-    "users": "node --env-file=.env scripts/users.js"
+    "users": "node --env-file=.env scripts/users.js",
+    "admin": "node scripts/admin.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
