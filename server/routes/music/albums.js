@@ -17,7 +17,7 @@ async function albumsRoutes(fastify) {
       WHERE 1=1
     `;
     const params = [];
-    if (search) { query += ' AND a.title LIKE ?'; params.push(`%${search}%`); }
+    if (search) { query += ' AND (a.title LIKE ? OR a.artist LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
     if (genre) { query += ' AND a.genre = ?'; params.push(genre); }
     query += ' GROUP BY a.id ORDER BY a.created_at DESC';
     return db.prepare(query).all(...params);
@@ -74,7 +74,7 @@ async function albumsRoutes(fastify) {
     const album = db.prepare('SELECT cover_path FROM music_albums WHERE id = ?').get(request.params.id);
     if (!album || !album.cover_path) return reply.status(404).send({ error: 'No cover' });
     const filePath = path.resolve(album.cover_path);
-    if (!fs.existsSync(filePath)) return reply.status(404).send({ error: 'Cover file not found' });
+    if (!require('../../utils').isWithinAnyDir(filePath, require('../../utils').MEDIA_DIRS) || !fs.existsSync(filePath)) return reply.status(404).send({ error: 'Cover file not found' });
     const ext = path.extname(filePath).toLowerCase();
     const mimeTypes = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif' };
     reply.headers({ 'Content-Type': mimeTypes[ext] || 'image/jpeg', 'Cache-Control': 'public, max-age=86400' });

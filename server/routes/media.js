@@ -6,8 +6,20 @@ const path = require('path');
 const fs = require('fs');
 
 async function mediaRoutes(fastify) {
+  fastify.get('/api/media/filters', { preHandler: authMiddleware }, async () => {
+    const db = getDb();
+    const genres = new Set();
+    for (const row of db.prepare("SELECT DISTINCT genre FROM media WHERE genre <> ''").all()) {
+      for (const genre of row.genre.split(/[,;]/).map(value => value.trim()).filter(Boolean)) genres.add(genre);
+    }
+    return {
+      genres: [...genres].sort((a, b) => a.localeCompare(b)),
+      years: db.prepare('SELECT DISTINCT year FROM media WHERE year IS NOT NULL ORDER BY year DESC').all().map(row => row.year),
+    };
+  });
+
   fastify.get('/api/media', { preHandler: authMiddleware }, async (request) => {
-    const { type, genre, search } = request.query;
+    const { type, genre, search, year, ready, sort } = request.query;
     const limit = Math.min(100, Math.max(1, Number.parseInt(request.query.limit, 10) || 36));
     const offset = Math.max(0, Number.parseInt(request.query.offset, 10) || 0);
     const db = getDb();
@@ -28,7 +40,27 @@ async function mediaRoutes(fastify) {
       params.push(`%${search}%`, `%${search}%`);
     }
 
-    sql += ' ORDER BY created_at DESC, id LIMIT ? OFFSET ?';
+    if (year) {
+      sql += ' AND year = ?';
+      params.push(year);
+    }
+    if (ready === '1') {
+      sql += ` AND ((type = 'movie' AND file_path IS NOT NULL AND file_path <> '' AND file_size > 0
+        AND COALESCE(transcode_status, '') NOT IN ('pending', 'converting', 'paused', 'failed')
+        AND COALESCE(download_status, '') NOT IN ('downloading', 'importing', 'failed'))
+        OR (type = 'series' AND EXISTS (SELECT 1 FROM episodes e WHERE e.series_id = media.id
+          AND e.file_path IS NOT NULL AND e.file_path <> '' AND e.file_size > 0
+          AND COALESCE(e.transcode_status, '') NOT IN ('pending', 'converting', 'paused', 'failed'))))`;
+    }
+
+    const orders = {
+      newest: 'created_at DESC, id',
+      title: 'title COLLATE NOCASE ASC, id',
+      'year-desc': 'year IS NULL, year DESC, title COLLATE NOCASE ASC, id',
+      'year-asc': 'year IS NULL, year ASC, title COLLATE NOCASE ASC, id',
+    };
+    const order = Object.hasOwn(orders, sort) ? orders[sort] : orders.newest;
+    sql += ` ORDER BY ${order} LIMIT ? OFFSET ?`;
     const rows = db.prepare(sql).all(...params, limit + 1, offset);
     const hasMore = rows.length > limit;
     const media = rows.slice(0, limit);

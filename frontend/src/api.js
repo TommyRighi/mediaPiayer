@@ -43,11 +43,12 @@ export const api = {
     me: () => request('GET', '/auth/me'),
     updateProfile: (data) => request('PATCH', '/auth/profile', data),
     online: () => request('GET', '/auth/online'),
-    mediaToken: () => request('GET', '/auth/media-token'),
+    mediaToken: (options = {}) => request('GET', '/auth/media-token', null, options),
     changePassword: (currentPassword, newPassword) =>
       request('POST', '/auth/change-password', { currentPassword, newPassword }),
   },
   media: {
+    filters: () => request('GET', '/media/filters'),
     subtitleUrl: (id) => `${BASE}/subtitles/${id}`,
     list: (params = {}) => {
       const q = new URLSearchParams(params).toString();
@@ -114,6 +115,14 @@ export const api = {
       request('GET', `/transcode/status/${mediaId}${episodeId ? `?episodeId=${episodeId}` : ''}`),
   },
   music: {
+    jams: {
+      create: trackIds => request('POST', '/music/jams', { trackIds }),
+      join: code => request('POST', '/music/jams/join', { code }),
+      get: id => request('GET', `/music/jams/${id}`, null, { headers: { 'X-Background-Request': '1' } }),
+      control: (id, data) => request('POST', `/music/jams/${id}/control`, data),
+      add: (id, trackId) => request('POST', `/music/jams/${id}/queue`, { trackId }),
+      leave: id => request('POST', `/music/jams/${id}/leave`),
+    },
     albums: {
       list: (params = {}) => {
         const q = new URLSearchParams(params).toString();
@@ -130,7 +139,9 @@ export const api = {
         const q = new URLSearchParams(params).toString();
         return request('GET', `/music/tracks${q ? '?' + q : ''}`);
       },
-      get: (id) => request('GET', `/music/tracks/${id}`),
+      get: (id) => request('GET', `/music/tracks/${id}`, null, { headers: { 'X-Background-Request': '1' } }),
+      prepare: (id, retry = false) => request('POST', `/music/tracks/${id}/prepare`, { retry }),
+      coverUrl: id => `${BASE}/music/tracks/${id}/cover`,
       streamUrl: (id) => `${BASE}/music/tracks/${id}/stream`,
       update: (id, data) => request('PATCH', `/music/tracks/${id}`, data),
       delete: (id) => request('DELETE', `/music/tracks/${id}`),
@@ -173,10 +184,10 @@ export function setMediaToken() { mediaReady = true; }
 export function clearMediaToken() { mediaReady = false; localStorage.removeItem('mediaToken'); }
 export function hasMediaToken() { return mediaReady; }
 
-export async function refreshMediaToken(retries = 3, delayMs = 2000) {
+export async function refreshMediaToken(retries = 3, delayMs = 2000, options = {}) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const data = await api.auth.mediaToken();
+      const data = await api.auth.mediaToken(options);
       mediaReady = data.ready === true;
       return mediaReady;
     } catch (err) {

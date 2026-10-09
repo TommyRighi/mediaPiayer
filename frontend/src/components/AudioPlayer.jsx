@@ -16,19 +16,21 @@ export default function AudioPlayer() {
   const [showVol, setShowVol] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
 
-  const { currentTrack, playing, currentTime, duration, volume, shuffle, repeat } = player;
+  const { currentTrack, playing, currentTime, duration, volume, shuffle, repeat, jam } = player;
 
   if (!currentTrack) return null;
 
 
   return (
     <div className="ap-bar">
-      <input type="range" className="ap-progress-bar" aria-label="Playback position" min="0" max={duration || 1} step="1" value={currentTime} onChange={event => player.seek(Number(event.target.value))} style={{ accentColor: 'var(--jf-primary)' }} />
+      <input type="range" className="ap-progress-bar" aria-label="Playback position" disabled={!!jam.id && (!jam.canControl || !jam.connected)} min="0" max={duration || 1} step="1" value={currentTime} onChange={event => player.seek(Number(event.target.value))} style={{ accentColor: 'var(--jf-primary)' }} />
 
+      {(player.audioStatus || player.audioError) && <div className="ap-notice" role={player.audioError ? 'alert' : 'status'}>{player.audioError || player.audioStatus}{player.audioError && <button onClick={player.retryAudio}>Try again</button>}</div>}
+      {jam.id && <div className="ap-notice"><button onClick={() => navigate('/music/jam')}>Jam · {jam.connected ? 'Listening together' : 'Reconnecting'}</button>{jam.needsPlay && <button onClick={jam.resume}>Enable sound</button>}</div>}
       <div className="ap-content">
         <div className="ap-track-info" onClick={() => currentTrack.album_id && navigate(`/music/album/${currentTrack.album_id}`)}>
-          {currentTrack.album_id ? (
-            <img src={api.music.albums.coverUrl(currentTrack.album_id)} alt="" className="ap-cover" />
+          {(currentTrack.album_id || currentTrack.cover_path) ? (
+            <img src={api.music.tracks.coverUrl(currentTrack.id)} alt="" className="ap-cover" onError={event => { event.currentTarget.style.visibility = 'hidden'; }} />
           ) : (
             <div className="ap-cover ap-cover-placeholder">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" /></svg>
@@ -41,23 +43,23 @@ export default function AudioPlayer() {
         </div>
 
         <div className="ap-controls">
-          <button className={"ap-btn" + (shuffle ? ' ap-btn-active' : '')} onClick={() => player.setShuffle(!shuffle)} title="Shuffle">
+          <button className={"ap-btn" + (shuffle ? ' ap-btn-active' : '')} onClick={() => player.setShuffle(!shuffle)} disabled={!!jam.id} title="Shuffle">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" /></svg>
           </button>
-          <button className="ap-btn" onClick={player.prev} title="Previous">
+          <button className="ap-btn" onClick={player.prev} disabled={!!jam.id && (!jam.canControl || !jam.connected)} title="Previous">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg>
           </button>
-          <button className="ap-btn ap-btn-play" onClick={player.togglePlay} title={playing ? 'Pause' : 'Play'}>
+          <button className="ap-btn ap-btn-play" onClick={player.togglePlay} disabled={!!jam.id && (!jam.canControl || !jam.connected)} title={playing ? 'Pause' : 'Play'}>
             {playing ? (
               <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
             ) : (
               <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
             )}
           </button>
-          <button className="ap-btn" onClick={player.next} title="Next">
+          <button className="ap-btn" onClick={player.next} disabled={!!jam.id && (!jam.canControl || !jam.connected)} title="Next">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>
           </button>
-          <button className={"ap-btn" + (repeat !== 'off' ? ' ap-btn-active' : '')} onClick={() => player.setRepeat(repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off')} title={`Repeat: ${repeat}`}>
+          <button className={"ap-btn" + (repeat !== 'off' ? ' ap-btn-active' : '')} onClick={() => player.setRepeat(repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off')} disabled={!!jam.id} title={`Repeat: ${repeat}`}>
             {repeat === 'one' ? (
               <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" /><text x="12" y="14" textAnchor="middle" fontSize="7" fill="currentColor" fontWeight="bold">1</text></svg>
             ) : (
@@ -107,7 +109,7 @@ export default function AudioPlayer() {
               <button
                 key={`${track.id}:${idx}`}
                 className={`w-full text-left ap-queue-item ${idx === player.currentIndex ? 'ap-queue-item-active' : ''}`}
-                onClick={() => { player.playQueue(player.queue, idx); }}
+                disabled={!!jam.id && (!jam.canControl || !jam.connected)} onClick={() => { if (jam.id) jam.control('select', { entryId: track.entry_id }); else player.playQueue(player.queue, idx); }}
               >
                 <span className="ap-queue-num">{idx + 1}</span>
                 <span className="ap-queue-track">{track.title}</span>

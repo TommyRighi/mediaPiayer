@@ -74,7 +74,8 @@ function revokeSessions(userId, sessionId) {
   else db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(userId);
   // Existing party sockets must be closed immediately, not only on reconnect.
   const { partySockets } = require('./routes/parties');
-  for (const sockets of partySockets.values()) for (const socket of sockets) {
+  const { jamSockets } = require('./routes/music/jams');
+  for (const sockets of [...partySockets.values(), ...jamSockets.values()]) for (const socket of sockets) {
     if (socket.authUserId === userId && (!sessionId || socket.authSessionId === sessionId)) {
       socket.close(4001, 'Session revoked');
       const forceClose = setTimeout(() => socket.terminate(), 1000); forceClose.unref();

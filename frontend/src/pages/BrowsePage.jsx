@@ -77,7 +77,32 @@ export default function BrowsePage() {
   const [attempt, setAttempt] = useState(0);
   const typeFilter = searchParams.get('type') || '';
   const searchQuery = searchParams.get('q') || '';
-  const queryKey = `${typeFilter}:${searchQuery}`;
+  const genreFilter = searchParams.get('genre') || '';
+  const yearFilter = searchParams.get('year') || '';
+  const readyFilter = searchParams.get('ready') === '1';
+  const sort = searchParams.get('sort') || 'newest';
+  const [filters, setFilters] = useState({ genres: [], years: [] });
+  const [filterError, setFilterError] = useState(false);
+  const browsing = !typeFilter && !searchQuery && !genreFilter && !yearFilter && !readyFilter && sort === 'newest';
+  const queryKey = JSON.stringify([typeFilter, searchQuery, genreFilter, yearFilter, readyFilter, sort]);
+  function updateQuery(key, value) {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set(key, value); else next.delete(key);
+    setPage(0);
+    setSearchParams(next, { replace: true });
+  }
+  function typeUrl(type) {
+    const next = new URLSearchParams(searchParams);
+    if (type) next.set('type', type); else next.delete('type');
+    return `/?${next}`;
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    api.media.filters().then(data => { if (!cancelled) { setFilters(data); setFilterError(false); } })
+      .catch(() => { if (!cancelled) setFilterError(true); });
+    return () => { cancelled = true; };
+  }, [attempt]);
   const lastQuery = useRef(queryKey);
 
   useEffect(() => {
@@ -89,7 +114,7 @@ export default function BrowsePage() {
       const offset = changed ? 0 : page * 36;
       if (changed) { setPage(0); lastQuery.current = queryKey; }
       try {
-        const data = await api.media.list({ type: typeFilter, search: searchQuery.trim(), limit: 36, offset });
+        const data = await api.media.list({ type: typeFilter, search: searchQuery.trim(), genre: genreFilter, year: yearFilter, ready: readyFilter ? '1' : '', sort, limit: 36, offset });
         if (cancelled) return;
         setMedia(previous => offset ? [...previous, ...data.media] : data.media);
         setHasMore(data.hasMore);
@@ -100,7 +125,7 @@ export default function BrowsePage() {
       }
     }, searchQuery ? 250 : 0);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [typeFilter, searchQuery, queryKey, page, attempt]);
+  }, [typeFilter, searchQuery, genreFilter, yearFilter, readyFilter, sort, queryKey, page, attempt]);
 
   useEffect(() => {
     api.watch.history().then(data => setHistory(data.history)).catch(() => {});
@@ -112,16 +137,16 @@ export default function BrowsePage() {
     }
   }, [searchRequest, loading]);
 
-  const featured = media.find(item => item.file_path && item.file_size > 0 && !['pending', 'converting'].includes(item.transcode_status) && !['downloading', 'importing'].includes(item.download_status)) || media[0];
-  const featuredPlayable = featured?.file_path && featured.file_size > 0 && !['pending', 'converting'].includes(featured.transcode_status) && !['downloading', 'importing'].includes(featured.download_status);
+  const featured = media.find(item => item.file_path && item.file_size > 0 && !['pending', 'converting', 'paused', 'failed'].includes(item.transcode_status) && !['downloading', 'importing', 'failed'].includes(item.download_status)) || media[0];
+  const featuredPlayable = featured?.file_path && featured.file_size > 0 && !['pending', 'converting', 'paused', 'failed'].includes(featured.transcode_status) && !['downloading', 'importing', 'failed'].includes(featured.download_status);
   const movies = media.filter(m => m.type === 'movie');
   const series = media.filter(m => m.type === 'series');
   const continueWatching = history.filter(h => !h.completed && h.type);
   const retry = () => setAttempt(n => n + 1);
 
-  if (loading && media.length === 0 && !typeFilter && !searchQuery) return <PageState busy title="Loading your library" message="Finding your movies, series and saved positions." />;
+  if (loading && media.length === 0 && browsing) return <PageState busy title="Loading your library" message="Finding your movies, series and saved positions." />;
   if (error && media.length === 0) return <PageState title="Unable to load your library" message={error} retry={retry} />;
-  if (!loading && !error && media.length === 0 && !typeFilter && !searchQuery) return (
+  if (!loading && !error && media.length === 0 && browsing) return (
     <PageState title="Your library is ready for its first video" message={isAdmin ? 'Upload a movie or scan your media folders to get started.' : 'Your administrator has not added any videos yet.'}>
       {isAdmin && <Link to="/upload" className="jf-btn-primary inline-block">Upload media</Link>}
     </PageState>
@@ -129,7 +154,7 @@ export default function BrowsePage() {
 
   return (
     <div>
-      {featured && !typeFilter && !searchQuery && (
+      {featured && browsing && (
         <div className="jf-backdrop" style={featured.backdrop_path ? { backgroundImage: `url(${api.media.backdropUrl(featured.id, 'md')})` } : { background: 'linear-gradient(to bottom right, var(--jf-surface-elevated), var(--jf-bg))' }}>
           <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--jf-bg) 0%, rgba(20,20,20,0.6) 40%, transparent 100%)' }} />
           <div className="absolute inset-0 flex items-end pb-12 md:pb-20 px-4 md:px-8">
@@ -139,7 +164,7 @@ export default function BrowsePage() {
                 <p className="text-sm md:text-lg mb-3 md:mb-4 line-clamp-3" style={{ color: 'var(--jf-text-secondary)' }}>{featured.description}</p>
               )}
               <div className="flex gap-3">
-                {featured.type === 'movie' && !featuredPlayable ? <span className="jf-btn-secondary opacity-60">{['pending', 'converting'].includes(featured.transcode_status) ? 'Preparing video…' : 'Video unavailable'}</span> : <Link
+                {featured.type === 'movie' && !featuredPlayable ? <span className="jf-btn-secondary opacity-60">{['pending', 'converting', 'paused'].includes(featured.transcode_status) ? 'Preparing video…' : 'Video unavailable'}</span> : <Link
                   to={featured.type === 'movie' ? `/watch/${featured.id}` : `/series/${featured.id}`}
                   className="jf-btn-primary flex items-center gap-2"
                 >
@@ -159,7 +184,7 @@ export default function BrowsePage() {
         </div>
       )}
 
-      <div className={(featured && !typeFilter && !searchQuery) ? '-mt-8 md:-mt-16 relative z-10' : 'pt-4'}>
+      <div className={(featured && browsing) ? '-mt-8 md:-mt-16 relative z-10' : 'pt-4'}>
         <div className="px-4 md:px-8 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <div className="relative flex-1 w-full max-w-md">
@@ -178,21 +203,21 @@ export default function BrowsePage() {
             </div>
             <div className="flex gap-1">
               <Link
-                to={searchQuery ? `/?q=${encodeURIComponent(searchQuery)}` : "/"}
+                to={typeUrl('')}
                 className={`px-3 py-2 rounded text-sm font-medium transition ${!typeFilter ? '' : 'opacity-60'}`}
                 style={!typeFilter ? { background: 'var(--jf-primary)', color: 'var(--jf-bg)' } : { color: 'var(--jf-text-secondary)' }}
               >
                 All
               </Link>
               <Link
-                to={`/?type=movie${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}`}
+                to={typeUrl('movie')}
                 className={`px-3 py-2 rounded text-sm font-medium transition ${typeFilter === 'movie' ? '' : 'opacity-60'}`}
                 style={typeFilter === 'movie' ? { background: 'var(--jf-primary)', color: 'var(--jf-bg)' } : { color: 'var(--jf-text-secondary)' }}
               >
                 Movies
               </Link>
               <Link
-                to={`/?type=series${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}`}
+                to={typeUrl('series')}
                 className={`px-3 py-2 rounded text-sm font-medium transition ${typeFilter === 'series' ? '' : 'opacity-60'}`}
                 style={typeFilter === 'series' ? { background: 'var(--jf-primary)', color: 'var(--jf-bg)' } : { color: 'var(--jf-text-secondary)' }}
               >
@@ -200,13 +225,32 @@ export default function BrowsePage() {
               </Link>
             </div>
           </div>
+          <div className="jf-catalog-filters">
+            <label><span>Genre</span><select className="jf-input" value={genreFilter} onChange={e => updateQuery('genre', e.target.value)}>
+              <option value="">All genres</option>
+              {genreFilter && !filters.genres.includes(genreFilter) && <option>{genreFilter}</option>}
+              {filters.genres.map(genre => <option key={genre}>{genre}</option>)}
+            </select></label>
+            <label><span>Year</span><select className="jf-input" value={yearFilter} onChange={e => updateQuery('year', e.target.value)}>
+              <option value="">All years</option>
+              {yearFilter && !filters.years.map(String).includes(yearFilter) && <option>{yearFilter}</option>}
+              {filters.years.map(year => <option key={year}>{year}</option>)}
+            </select></label>
+            <label><span>Sort by</span><select className="jf-input" value={sort} onChange={e => updateQuery('sort', e.target.value)}>
+              <option value="newest">Recently added</option><option value="title">Title A–Z</option>
+              <option value="year-desc">Newest year</option><option value="year-asc">Oldest year</option>
+            </select></label>
+            <label className="jf-ready-filter"><input type="checkbox" checked={readyFilter} onChange={e => updateQuery('ready', e.target.checked ? '1' : '')} /><span>Ready to watch</span></label>
+            {!browsing && <button className="jf-btn-secondary" onClick={() => { setPage(0); setSearchParams({}, { replace: true }); }}>Reset filters</button>}
+          </div>
+          {filterError && <p role="status" className="text-sm mt-3">Unable to load filter options. <button className="underline" onClick={retry}>Try again</button></p>}
         </div>
 
         <div className="px-4 md:px-8 mb-5 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm" role="status" aria-live="polite" style={{ color: 'var(--jf-text-secondary)' }}>{loading ? 'Searching your library…' : searchQuery ? `${media.length}${hasMore ? '+' : ''} ${media.length === 1 && !hasMore ? 'result' : 'results'} for “${searchQuery}”` : 'Your library'}</p>
           {!user?.history_enabled && !searchQuery && <Link to="/profile#privacy-heading" className="text-xs underline" style={{ color: 'var(--jf-text-secondary)' }}>Enable saved progress to continue watching</Link>}
         </div>
-        {continueWatching.length > 0 && !typeFilter && !searchQuery && (
+        {continueWatching.length > 0 && browsing && (
           <MediaRow title="Continue Watching" items={continueWatching.map(h => ({
             ...h,
             id: h.media_id,
@@ -219,13 +263,13 @@ export default function BrowsePage() {
           }))} variant="backdrop" />
         )}
         {error && <div className="px-4 md:px-8 mb-4" role="alert">{error} <button className="jf-btn-secondary" onClick={retry}>Try again</button></div>}
-        {movies.length > 0 && <MediaRow title="Movies" items={movies} grid={!!searchQuery || !!typeFilter} />}
-        {series.length > 0 && <MediaRow title="Series" items={series} grid={!!searchQuery || !!typeFilter} />}
+        {movies.length > 0 && <MediaRow title="Movies" items={movies} grid={!browsing} />}
+        {series.length > 0 && <MediaRow title="Series" items={series} grid={!browsing} />}
         {hasMore && <div className="px-4 md:px-8 pb-8"><button className="jf-btn-secondary" disabled={loading || !!error} onClick={() => setPage(n => n + 1)}>{loading ? 'Loading…' : 'Load more'}</button></div>}
         {!loading && media.length === 0 && (
           <div className="text-center py-16" style={{ color: 'var(--jf-text-muted)' }}>
-            <h2 className="text-lg mb-2">{searchQuery ? `No results for “${searchQuery}”` : `No ${typeFilter === 'series' ? 'series' : 'movies'} yet.`}</h2>
-            {searchQuery && <><p className="text-sm mb-5">Try part of the title or a genre.</p><button className="jf-btn-secondary" onClick={() => { const next = new URLSearchParams(searchParams); next.delete('q'); setSearchParams(next, { replace: true }); searchRef.current?.focus(); }}>Clear search</button></>}
+            <h2 className="text-lg mb-2">{searchQuery ? `No results for “${searchQuery}”` : 'No titles match your filters.'}</h2>
+            {!browsing && <><p className="text-sm mb-5">Try another search or broaden your filters.</p><button className="jf-btn-secondary" onClick={() => { setPage(0); setSearchParams({}, { replace: true }); }}>Reset filters</button></>}
           </div>
         )}
       </div>

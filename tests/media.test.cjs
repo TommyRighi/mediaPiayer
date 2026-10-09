@@ -39,6 +39,48 @@ test('catalog pagination is stable and bounded, including genre search', async (
   assert.equal(search.media.length, 1);
 });
 
+test('catalog filters cover the whole library and combine with stable sorting', async () => {
+  const insert = db.prepare('INSERT INTO media (id,title,type,genre,year) VALUES (?,?,?,?,?)');
+  insert.run('filter-z', 'Zulu', 'movie', 'Drama, Mystery', 2020);
+  insert.run('filter-a', 'alpha', 'movie', 'Drama', 2023);
+  insert.run('filter-b', 'Bravo', 'movie', 'Drama', 2023);
+  insert.run('filter-unknown', 'Unknown', 'movie', 'Drama', null);
+  const options = (await app.inject({ url: '/api/media/filters', headers })).json();
+  assert.ok(options.genres.includes('Mystery'));
+  assert.deepEqual(options.years, [2023, 2020]);
+  assert.equal((await app.inject({ url: '/api/media/filters' })).statusCode, 401);
+  const filtered = (await app.inject({ url: '/api/media?genre=Drama&year=2023&sort=title&limit=1', headers })).json();
+  assert.deepEqual(filtered.media.map(item => item.id), ['filter-a']);
+  assert.equal(filtered.hasMore, true);
+  const next = (await app.inject({ url: '/api/media?genre=Drama&year=2023&sort=title&limit=1&offset=1', headers })).json();
+  assert.deepEqual(next.media.map(item => item.id), ['filter-b']);
+  const ascending = (await app.inject({ url: '/api/media?genre=Drama&sort=year-asc', headers })).json();
+  assert.deepEqual(ascending.media.map(item => item.year), [2020, 2023, 2023, null]);
+  const descending = (await app.inject({ url: '/api/media?genre=Drama&sort=year-desc', headers })).json();
+  assert.deepEqual(descending.media.map(item => item.year), [2023, 2023, 2020, null]);
+  assert.equal((await app.inject({ url: '/api/media?sort=__proto__', headers })).statusCode, 200);
+  assert.equal((await app.inject({ url: '/api/media?year=invalid', headers })).json().media.length, 0);
+});
+
+test('ready filter excludes unavailable movies and requires a playable series episode', async () => {
+  movie('ready-film', path.join(root, 'ready.mp4'));
+  db.prepare('UPDATE media SET file_size=100 WHERE id=?').run('ready-film');
+  const insert = db.prepare('INSERT INTO media (id,title,type) VALUES (?,?,?)');
+  insert.run('ready-show', 'Ready show', 'series');
+  insert.run('pending-show', 'Pending show', 'series');
+  const episode = db.prepare("INSERT INTO episodes (id,series_id,season_number,episode_number,title,file_path,file_size,transcode_status) VALUES (?,?,1,1,'Episode',?,100,?)");
+  episode.run('ready-episode', 'ready-show', path.join(root, 'episode.mp4'), null);
+  episode.run('pending-episode', 'pending-show', path.join(root, 'pending.mp4'), 'paused');
+  for (const status of ['pending', 'converting', 'paused', 'failed']) {
+    movie(`not-ready-${status}`, path.join(root, `${status}.mp4`));
+    db.prepare('UPDATE media SET file_size=100, transcode_status=? WHERE id=?').run(status, `not-ready-${status}`);
+  }
+  movie('downloading-film', path.join(root, 'download.mp4'));
+  db.prepare("UPDATE media SET file_size=100, download_status='downloading' WHERE id='downloading-film'").run();
+  const result = (await app.inject({ url: '/api/media?ready=1&sort=title', headers })).json();
+  assert.deepEqual(result.media.map(item => item.id).sort(), ['ready-film', 'ready-show']);
+});
+
 test('native HLS child requests authenticate using the media cookie', async () => {
   const dir = path.join(root, 'hls'); fs.mkdirSync(dir);
   fs.writeFileSync(path.join(dir, 'master.m3u8'), '#EXTM3U\nplaylist.m3u8\n');

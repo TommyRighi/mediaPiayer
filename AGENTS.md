@@ -22,7 +22,7 @@ npm run dev           # frontend/ — Vite on :5173, proxies /api → :3000
 - **Static production app:** backend serves `server/dist/`, produced by the frontend build
 - **Media handling:** direct file streaming plus HLS/transcoding helpers in `server/transcode.js` and `scripts/transcode.js`
 - **No TypeScript** — entire project is plain JavaScript
-- **No test framework** — no `npm test`, no test runners configured
+- **Tests:** Node's built-in test runner via `npm test`, with isolated SQLite databases and runtime fixtures
 
 ## Commands
 
@@ -32,6 +32,7 @@ npm run dev           # frontend/ — Vite on :5173, proxies /api → :3000
 | Root | `npm run dev:all` | Runs backend and frontend dev servers together |
 | Root | `npm start` | Backend production |
 | Root | `npm run build` | Builds frontend to `server/dist/` |
+| Root | `npm test` | Runs backend and regression checks with Node's built-in test runner |
 | Root | `npm run deploy` | Installs deps, builds frontend, then starts backend |
 | Root | `npm run transcode:start` | Starts queued/needed transcoding work |
 | Root | `npm run transcode:status` | Shows transcode status |
@@ -51,8 +52,10 @@ npm run dev           # frontend/ — Vite on :5173, proxies /api → :3000
 - **Build output goes to `server/dist/`** — the backend serves this directory statically in production. Always build before running in production
 - **Dev needs both servers** — `npm run dev:all` starts both; if running manually, Vite on port 5173 proxies `/api` to backend port 3000
 - **Media files** — `media/{movies,posters,series,music}` directories are committed empty but their contents are gitignored. The admin/music scanners walk these directories
-- **Auth** — JWT tokens stored in `localStorage`; API client in `frontend/src/api.js` auto-attaches `Authorization` headers
+- **Auth** — sessions and media credentials use HttpOnly cookies. The API client removes legacy tokens from `localStorage`
 - **Video streaming** — server handles HTTP range requests for seeking and can serve HLS outputs under `/api/media/:id/hls/*` and `/api/episodes/:id/hls/*`
 - **Transcoding** — root transcode scripts delegate to `scripts/transcode.js`; backend routes expose transcode status under `/api/transcode/status/:mediaId`
-- **Music** — music routes live in `server/routes/music.js`, including albums, tracks, playlists, favorites, progress, uploads, scans, and YouTube download helpers
+- **Music** — music routes live in `server/routes/music/`, registered through `index.js`, including albums, tracks, playlists, favorites, progress, uploads, scans, and YouTube download helpers
 - **Watch parties** — use WebSocket upgrade on `/api/parties/:id/ws` for real-time sync
+- **Music Jams** — `/api/music/jams` uses authenticated HTTP controls and `/api/music/jams/:id/ws` for state updates. Requires the social feature setting. SQLite stores rooms, membership and ordered queue entries; controls require the current revision.
+- **Audio imports** — `server/music-library.js` reads tags and embedded covers; `server/music-prepare.js` prepares browser-incompatible audio through the shared background scheduler, retaining originals.

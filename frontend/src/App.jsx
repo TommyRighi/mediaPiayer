@@ -16,6 +16,7 @@ const PartyRoom = lazy(() => import('./pages/PartyRoom'));
 const JoinPartyPage = lazy(() => import('./pages/JoinPartyPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const JamPage = lazy(() => import('./pages/JamPage'));
 const MusicPage = lazy(() => import('./pages/MusicPage'));
 const AlbumDetailPage = lazy(() => import('./pages/AlbumDetailPage'));
 const PlaylistDetailPage = lazy(() => import('./pages/PlaylistDetailPage'));
@@ -67,6 +68,7 @@ export default function App() {
             <Route path="downloads" element={<AdminRoute><DownloadsPage /></AdminRoute>} />
             <Route path="music/manage" element={<AdminRoute><MusicManagePage /></AdminRoute>} />
             <Route path="profile" element={<ProfilePage />} />
+            <Route path="music/jam" element={<JamPage />} />
             <Route path="music" element={<MusicPage />} />
             <Route path="music/album/:id" element={<AlbumDetailPage />} />
             <Route path="music/playlist/:id" element={<PlaylistDetailPage />} />

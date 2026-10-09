@@ -22,7 +22,7 @@ export default function SettingsPage() {
     {message && <p role="status" className="mb-4">{message}</p>}
     <div className="space-y-4">
       {[
-        ['socialEnabled', socialEnabled, 'Calendar and watch parties', 'Schedule shared screenings, invite other accounts and watch together with chat. Scheduled screenings are visible to other signed-in users.'],
+        ['socialEnabled', socialEnabled, 'Calendar, watch parties and music Jams', 'Schedule shared screenings, invite other accounts and watch together with chat, and listen together in music Jams. Scheduled screenings are visible to other signed-in users.'],
         ['downloadsEnabled', downloadsEnabled, 'Media downloads', 'Enable Transmission downloads and YouTube music imports. Transmission and yt-dlp must be installed and configured on the server.'],
       ].map(([key, checked, title, description]) => <section key={key} className="rounded-lg p-6" style={{ background: 'var(--jf-surface)' }}>
         <label className="flex items-start gap-4"><input type="checkbox" checked={checked} disabled={busy} onChange={event => change(key, event.target.checked)} className="mt-1" /><span><span className="block font-medium mb-2">{title}</span><span className="text-sm" style={{ color: 'var(--jf-text-secondary)' }}>{description}</span></span></label>

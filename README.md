@@ -294,6 +294,18 @@ The Node test suite is available with `npm test`; frontend lint runs in `fronten
 
 ### Interface features
 
+The video catalog filters by genre, year and readiness, with sorting by title,
+release year or date added. Filters stay in the URL and apply to the entire
+library before pagination. A series is ready to watch when at least one episode
+has a file and is not waiting for preparation.
+
+The player remembers audio language, subtitle language and subtitle visibility
+per account on the current device. Audio selection requires HLS audio tracks or
+a browser exposing native audio tracks. Series can advance automatically after
+a ten-second countdown at the end of an episode; select **Stay here** to cancel,
+or turn off **Automatically play next episode**. Temporary playback failures get
+at most two automatic recovery attempts per video before offering a manual retry.
+
 The sidebar includes Calendar. Enable shared screenings and watch parties in
 **Settings** with an administrator account. These settings are stored in SQLite
 and override the initial `SOCIAL_ENABLED` and `ENABLE_DOWNLOADS` environment values.
@@ -302,6 +314,28 @@ Viewing history remains a separate personal preference under Profile.
 Administrators can use **Music → Manage Music** to create and edit albums, upload
 audio, edit track metadata and remove library entries. Playlist tracks can be
 reordered with the up/down buttons, and Music offers a random mix.
+
+Music scans nested folders and reads embedded titles, artists, album names,
+track numbers, duration and cover images. Scan the library again to enrich
+existing entries while retaining edited titles. Search finds songs and albums
+by title or artist. MP3, M4A/AAC, FLAC, WAV, OGG and Opus stream directly when
+the browser supports them. WMA and files the browser cannot decode can be
+prepared as MP3 using FFmpeg. Preparation shares the media process queue,
+retains originals and shows its status in the player. A working FFmpeg with
+the `libmp3lame` encoder is required for this fallback. Retry from the player
+after correcting a failed preparation.
+
+To listen together, enable shared listening in administrator **Settings**, play
+a song, and open **Music → Listen together**. Start a Jam and send its invitation
+link or code to another signed-in account. Each participant listens on their
+own device and can add songs. The host controls playback and queue ordering,
+or can enable playback controls for everyone. Volume remains local. Rooms allow
+30 accounts and 200 queue entries. Refreshing restores membership; reconnecting
+resynchronizes playback. The host's **End Jam for everyone** closes the room.
+If autoplay is blocked, press **Enable sound**. Preparing the current song pauses
+the room; press Play once preparation finishes. Server restarts pause rooms.
+Media Session controls are available where supported by the browser; mobile
+background playback depends on the operating system and browser.
 
 **Downloads** shows video downloads and YouTube music imports. Enable downloads
 in Settings and configure Transmission or install yt-dlp before importing.

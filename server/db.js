@@ -339,7 +339,26 @@ function migrate() {
     `);
   }
 
+  for (const [name, type] of Object.entries({ cover_path: 'TEXT', playback_path: 'TEXT', playback_status: 'TEXT', playback_error: 'TEXT', metadata_read: 'INTEGER DEFAULT 0' })) {
+    if (!db.prepare('PRAGMA table_info(music_tracks)').all().some(column => column.name === name)) db.exec(`ALTER TABLE music_tracks ADD COLUMN ${name} ${type}`);
+  }
   db.exec(`
+    CREATE TABLE IF NOT EXISTS music_jams (
+      id TEXT PRIMARY KEY, host_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      invite_code TEXT NOT NULL UNIQUE, current_entry_id TEXT, position REAL NOT NULL DEFAULT 0,
+      is_playing INTEGER NOT NULL DEFAULT 0, updated_at_ms INTEGER NOT NULL,
+      shared_controls INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 0, closed INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS music_jam_members (
+      jam_id TEXT NOT NULL REFERENCES music_jams(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, PRIMARY KEY(jam_id,user_id)
+    );
+    CREATE TABLE IF NOT EXISTS music_jam_queue (
+      id TEXT PRIMARY KEY, jam_id TEXT NOT NULL REFERENCES music_jams(id) ON DELETE CASCADE,
+      track_id TEXT NOT NULL REFERENCES music_tracks(id) ON DELETE CASCADE,
+      added_by TEXT REFERENCES users(id) ON DELETE SET NULL, position INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_jam_queue ON music_jam_queue(jam_id, position);
     CREATE INDEX IF NOT EXISTS idx_media_created ON media(created_at DESC, id);
     CREATE INDEX IF NOT EXISTS idx_watch_recent ON watch_progress(user_id, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_music_album_tracks ON music_tracks(album_id, track_number);

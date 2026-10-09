@@ -9,6 +9,8 @@ const youtubeRoutes = require('./youtube');
 
 async function musicRoutes(fastify) {
   const prefix = '/api/music';
+  await fastify.register(require('./jams'));
+  fastify.addHook('onClose', async () => require('../../music-prepare').stop());
 
   await fastify.register(albumsRoutes, { prefix });
   await fastify.register(tracksRoutes, { prefix });
@@ -79,7 +81,7 @@ async function musicRoutes(fastify) {
   });
 
   fastify.post(prefix + '/scan', { preHandler: [authMiddleware, adminMiddleware] }, async () => {
-    const results = scanMusicFolder();
+    const results = await scanMusicFolder();
     return { success: true, ...results };
   });
 }

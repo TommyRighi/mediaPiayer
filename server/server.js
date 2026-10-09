@@ -90,7 +90,7 @@ await fastify.register(rateLimit, {
     const pathname = request.url.split('?')[0];
     if (/\/(video|stream)$|\/hls\//.test(pathname)) {
       background.touchActivity(30000);
-    } else if (!/\/transcode\/|\/watch\/(activity|progress)|\/music\/(progress|youtube\/status)|\/download|\/auth\/(online|media-token)/.test(pathname)) {
+    } else if (!/\/transcode\/|\/watch\/(activity|progress)|\/music\/(progress|jams|tracks\/[^/]+$|youtube\/status)|\/download|\/auth\/(online|media-token)/.test(pathname)) {
       background.touchActivity();
     }
     return payload;
@@ -127,6 +127,7 @@ await fastify.register(rateLimit, {
   await fastify.register(requestRoutes);
   await fastify.register(musicRoutes);
 
+  require('./music-prepare').resume();
   resumePendingJobs();
   const queueTimer = setInterval(resumePendingJobs, 30000);
   queueTimer.unref();

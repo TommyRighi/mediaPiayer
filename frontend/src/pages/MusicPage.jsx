@@ -54,6 +54,7 @@ function formatDuration(seconds) {
 }
 
 export default function MusicPage() {
+  const [search, setSearch] = useState('');
   const [searchParams] = useSearchParams();
   const { isAdmin, downloadsEnabled } = useAuth();
   const player = usePlayer();
@@ -82,20 +83,20 @@ export default function MusicPage() {
       setLoading(true); setError('');
       try {
         if (tab === 'albums') {
-          const data = await api.music.albums.list();
+          const data = await api.music.albums.list({ search });
           if (!cancelled) setAlbums(data);
         } else if (tab === 'playlists') {
           const data = await api.music.playlists.list();
           if (!cancelled) setPlaylists(data);
         } else {
-          const [data, favs] = await Promise.all([tab === 'tracks' ? api.music.tracks.list() : Promise.resolve([]), api.music.favorites.list()]);
+          const [data, favs] = await Promise.all([tab === 'tracks' ? api.music.tracks.list({ search }) : Promise.resolve([]), api.music.favorites.list()]);
           if (!cancelled) { setTracks(data); setFavorites(favs); }
         }
       } catch (err) { if (!cancelled) setError(err.message); }
       finally { if (!cancelled) setLoading(false); }
     }, 0);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [tab, reload]);
+  }, [tab, reload, search]);
 
   const favoriteIds = new Set(favorites.map(f => f.id));
 
@@ -169,6 +170,8 @@ export default function MusicPage() {
         )}
       </div>
 
+      <Link className="jf-btn-primary inline-block mb-4 mr-3" to="/music/jam">Listen together · Jam</Link>
+      <input className="jf-input mb-4" aria-label="Search music library" placeholder="Search songs, artists and albums" value={search} onChange={event => setSearch(event.target.value)} />
       <button className="jf-btn-secondary mb-4" onClick={playRandom}>Play Random Mix</button>
 
       <div className="flex gap-1 mb-6 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>

@@ -1,6 +1,6 @@
 const { getDb } = require('../../db');
 const { authMiddleware, mediaAuth, adminMiddleware } = require('../../auth');
-const { MEDIA_DIRS } = require('../../utils');
+const { MEDIA_DIRS, isWithinAnyDir } = require('../../utils');
 const { pipeline } = require('stream/promises');
 const { nanoid } = require('nanoid');
 const path = require('path');
@@ -9,13 +9,21 @@ const { AUDIO_EXTENSIONS, streamAudio } = require('./_common');
 
 async function tracksRoutes(fastify) {
 
+  fastify.post('/tracks/:id/prepare', { preHandler: authMiddleware }, async request => require('../../music-prepare').queuePreparation(request.params.id, request.body?.retry === true));
+  fastify.get('/tracks/:id/cover', { preHandler: mediaAuth }, async (request, reply) => {
+    const track = getDb().prepare('SELECT COALESCE(t.cover_path,a.cover_path) AS cover FROM music_tracks t LEFT JOIN music_albums a ON a.id=t.album_id WHERE t.id=?').get(request.params.id);
+    if (!track?.cover || !isWithinAnyDir(track.cover, MEDIA_DIRS) || !fs.existsSync(track.cover)) return reply.code(404).send({ error: 'No cover' });
+    reply.type(require('../../utils').getImageMimeType(track.cover));
+    return fs.createReadStream(track.cover);
+  });
+
   fastify.get('/tracks', { preHandler: [authMiddleware] }, async (request) => {
     const db = getDb();
     const { album_id, search } = request.query;
     let query = 'SELECT * FROM music_tracks WHERE 1=1';
     const params = [];
     if (album_id) { query += ' AND album_id = ?'; params.push(album_id); }
-    if (search) { query += ' AND title LIKE ?'; params.push(`%${search}%`); }
+    if (search) { query += ' AND (title LIKE ? OR artist LIKE ? OR album_id IN (SELECT id FROM music_albums WHERE title LIKE ? OR artist LIKE ?))'; params.push(...Array(4).fill(`%${search}%`)); }
     query += ' ORDER BY album_id, track_number, title';
     return db.prepare(query).all(...params);
   });
@@ -29,9 +37,9 @@ async function tracksRoutes(fastify) {
 
   fastify.get('/tracks/:id/stream', { preHandler: [mediaAuth] }, async (request, reply) => {
     const db = getDb();
-    const track = db.prepare('SELECT file_path FROM music_tracks WHERE id = ?').get(request.params.id);
+    const track = db.prepare('SELECT file_path, playback_path, playback_status FROM music_tracks WHERE id = ?').get(request.params.id);
     if (!track) return reply.status(404).send({ error: 'Track not found' });
-    return streamAudio(request, reply, track.file_path);
+    return streamAudio(request, reply, track.playback_status === 'ready' ? track.playback_path : track.file_path);
   });
 
   fastify.patch('/tracks/:id', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
@@ -78,29 +86,23 @@ async function tracksRoutes(fastify) {
     if (albumId) {
       const album = getDb().prepare('SELECT * FROM music_albums WHERE id = ?').get(albumId);
       if (!album) return reply.status(404).send({ error: 'Album not found' });
-      targetDir = path.dirname(album.cover_path && fs.existsSync(album.cover_path) ? album.cover_path : path.join(musicDir, album.title));
+      targetDir = path.join(musicDir, 'albums', albumId);
       fs.mkdirSync(targetDir, { recursive: true });
     } else {
       targetDir = path.join(musicDir, 'singles');
       fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    const id = nanoid();
-    const safeName = id + ext;
+    const safeName = nanoid() + ext;
     const filePath = path.join(targetDir, safeName);
     await pipeline(data.file, fs.createWriteStream(filePath));
     if (data.file.truncated) {
       await fs.promises.rm(filePath, { force: true });
       return reply.code(413).send({ error: 'The audio file is too large.' });
     }
-    const fileSize = (await fs.promises.stat(filePath)).size;
-
-    const db = getDb();
-    db.prepare(
-      'INSERT INTO music_tracks (id, album_id, track_number, title, artist, file_path, file_size) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, albumId, trackNum, trackTitle, trackArtist, filePath, fileSize);
-
-    return db.prepare('SELECT * FROM music_tracks WHERE id = ?').get(id);
+    const { importAudio } = require('../../music-library');
+    const result = await importAudio(filePath, { albumId, title: title?.value || undefined, fallbackTitle: trackTitle, artist: trackArtist, trackNumber: trackNum });
+    return result.track;
   });
 }
 
