@@ -1,5 +1,7 @@
 # MediaPiayer
 
+[Download desktop apps and quick setup guide](https://tommyrighi.github.io/mediaPiayer/) for Mac Apple Silicon, Mac Intel, Windows and Linux. Desktop apps include Tailscale and start without a configured library. Mobile access currently uses the official Tailscale app and a browser.
+
 Self-hosted Netflix-like media streaming that runs well on a Raspberry Pi and can be accessed remotely over Tailscale.
 
 ## Requirements (all machines)
