@@ -71,12 +71,19 @@
         "AppImage",
         "deb"
       ],
-      "maintainer": "MediaPiayer"
+      "maintainer": "MediaPiayer",
+      "desktopName": "it.mediapiayer.desktop",
+      "syncDesktopName": true
     }
   },
   "overrides": {
     "@electron/get": {
       "global-agent": "4.1.3"
     }
+  },
+  "homepage": "https://tommyrighi.github.io/mediaPiayer/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TommyRighi/mediaPiayer.git"
   }
 }
