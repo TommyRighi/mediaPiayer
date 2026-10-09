@@ -72,7 +72,6 @@
         "deb"
       ],
       "maintainer": "MediaPiayer",
-      "desktopName": "it.mediapiayer.desktop",
       "syncDesktopName": true
     }
   },
@@ -85,5 +84,6 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/TommyRighi/mediaPiayer.git"
-  }
+  },
+  "desktopName": "it.mediapiayer.desktop"
 }
