@@ -77,7 +77,7 @@ jobs:
         working-directory: desktop
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          xvfb-run -a npm run smoke
+          SMOKE_SCREENSHOT=false xvfb-run -a npm run smoke
       - run: npm run helper:build
         if: inputs.platforms != 'linux' || matrix.platform == 'linux'
         working-directory: desktop
