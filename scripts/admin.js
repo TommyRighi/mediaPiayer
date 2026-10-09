@@ -69,7 +69,10 @@ async function status() {
   console.log(`Origine browser: ${env.PUBLIC_ORIGIN || 'da configurare'}`);
   console.log(`Frontend: ${fs.existsSync(path.join(core.ROOT,'server/dist/index.html')) ? 'compilato' : 'da compilare'}`);
   for (const tool of ['npm','git','ffmpeg','ffprobe','tailscale','transmission-daemon','docker']) console.log(`${tool}: ${await core.available(tool, ['ffmpeg','ffprobe'].includes(tool) ? ['-version'] : tool === 'tailscale' ? ['version'] : ['--version']) ? 'disponibile' : 'non disponibile'}`);
-  if (fs.existsSync('/sys/class/thermal/thermal_zone0/temp')) console.log(`Temperatura: ${(Number(fs.readFileSync('/sys/class/thermal/thermal_zone0/temp','utf8'))/1000).toFixed(1)} °C`);
+  try {
+    const temperature = Number(fs.readFileSync('/sys/class/thermal/thermal_zone0/temp','utf8'));
+    if (Number.isFinite(temperature)) console.log(`Temperatura: ${(temperature/1000).toFixed(1)} °C`);
+  } catch { /* Virtual hosts and unavailable sensors must not break diagnostics. */ }
   const dbPath = env.DATABASE_PATH || path.join(core.ROOT,'data/mediapiayer.db');
   if (fs.existsSync(dbPath) && fs.existsSync(path.join(core.ROOT,'node_modules/better-sqlite3'))) show(await worker('summary'));
   for (const base of (env.MEDIA_DIRS || path.join(core.ROOT,'media')).split(',')) {
@@ -121,6 +124,7 @@ async function features() {
 async function serviceTarget() {
   if (process.platform !== 'linux' || !await core.available('systemctl')) return null;
   const system=await run('systemctl',['cat','mediapiayer.service'],{capture:true,allowFailure:true});
+  if (system.code !== 0 && !await core.available('systemctl', ['--user', 'show-environment'])) return null;
   return system.code === 0 ? {args:[],name:'di sistema'} : {args:['--user'],name:'utente'};
 }
 async function serviceAction(action) {

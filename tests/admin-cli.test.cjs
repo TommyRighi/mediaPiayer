@@ -109,7 +109,15 @@ test('help and diagnostics run without a TTY, and diagnostics never print secret
   const help=spawnSync(process.execPath,[cli,'--help'],{encoding:'utf8'});
   assert.equal(help.status,0);assert.match(help.stdout,/npm run admin/);
   const status=spawnSync(process.execPath,[cli,'--env',envFile,'--status'],{encoding:'utf8'});
-  assert.equal(status.status,0);assert.ok(!status.stdout.includes(config.JWT_SECRET));assert.match(status.stdout,/Stato e diagnostica/);
+  assert.equal(status.status,0,core.redact(status.stderr,config));assert.ok(!status.stdout.includes(config.JWT_SECRET));assert.match(status.stdout,/Stato e diagnostica/);
   const nonTTY=spawnSync(process.execPath,[cli,'--env',envFile],{encoding:'utf8'});
   assert.equal(nonTTY.status,1);assert.match(nonTTY.stderr,/terminale interattivo/);
+});
+
+test('diagnostics tolerate a thermal sensor that exists but cannot be read', () => {
+  const preload = path.join(temp, 'unavailable-sensor.cjs');
+  fs.writeFileSync(preload, `const fs = require('node:fs'); const original = fs.readFileSync; fs.readFileSync = function(file, ...args) { if (file === '/sys/class/thermal/thermal_zone0/temp') { const error = new Error('Sensor unavailable'); error.code = 'EIO'; throw error; } return original.call(this, file, ...args); };`);
+  const result = spawnSync(process.execPath, ['--require', preload, path.join(core.ROOT, 'scripts/admin.js'), '--env', envFile, '--status'], { encoding: 'utf8' });
+  assert.equal(result.status, 0, core.redact(result.stderr, config));
+  assert.match(result.stdout, /Stato e diagnostica/);
 });
