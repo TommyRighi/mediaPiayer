@@ -1,4 +1,4 @@
-# App desktop privata per Windows e macOS
+# App desktop privata per Windows, macOS e Linux
 
 Implementazione dell'8 ottobre 2026. Electron contiene il componente Go `tsnet` di Tailscale. Gli amici installano solo MediaPiayer. Non occorre configurare una VPN per tutto il computer.
 
@@ -69,7 +69,7 @@ Chi controlla il Pi acceso o il dispositivo di visione può conoscere il contenu
 
 ## Compilare gli installer
 
-Dipendenze separate, Node 24 e Go 1.26 o successivo compatibile con la versione Tailscale bloccata in `desktop/helper/go.mod`.
+Dipendenze separate, Node 24 e Go 1.27.1 o successivo compatibile con la versione Tailscale bloccata in `desktop/helper/go.mod`.
 
 ```bash
 npm ci --prefix desktop
@@ -78,11 +78,12 @@ npm run licenses --prefix desktop
 npm run desktop:start
 ```
 
-`GO_BINARY` permette di indicare un eseguibile Go non nel PATH. Il componente viene compilato per Mac Apple Silicon, Mac Intel e Windows x64; `HELPER_TARGETS` può restringere la lista.
+`GO_BINARY` permette di indicare un eseguibile Go non nel PATH. Il componente viene compilato per Mac Apple Silicon, Mac Intel, Windows x64 e Linux x64/ARM64; `HELPER_TARGETS` può restringere la lista.
 
 ```bash
 npm run dist:mac --prefix desktop
 npm run dist:win --prefix desktop
+npm run dist:linux --prefix desktop
 ```
 
 Per build Mac Intel esplicite, dopo aver compilato il componente eseguire `npx electron-builder --mac --x64` nella directory desktop. Per creare su Mac un installer Windows di sviluppo senza strumenti di firma, usare `npx electron-builder --win --x64 --config.win.signAndEditExecutable=false`. Una build Windows nativa resta preferibile per il rilascio firmato e la verifica.
@@ -114,3 +115,14 @@ Fonti tecniche: [tsnet](https://tailscale.com/docs/features/tsnet), [API tsnet](
 Stato degli audit delle dipendenze dell’8 ottobre 2026: zero vulnerabilità segnalate da npm audit per le dipendenze runtime backend e per il frontend aggiornato. La toolchain di packaging desktop ha otto segnalazioni moderate riconducibili a `sprintf-js`, senza patch disponibile nella versione pubblicata verificata; queste dipendenze di sviluppo non vengono incluse nell’app distribuita. Non equivale a un audit completo del codice Electron, Go o delle librerie native.
 
 Verifiche locali completate: avvio nativo Electron su Mac Apple Silicon; sandbox e IPC isolato; login, impostazioni privacy e logout nel browser; test Node e Go; avvio completo Fastify 5 in produzione; corrispondenza byte per byte dei file gzip/Brotli con l’output finale Vite. Generati DMG per Mac arm64 e x64 e installer NSIS Windows x64 non firmati. Il test ffmpeg della suite esistente è saltato perché ffmpeg non è disponibile nel PATH dell’ambiente locale; nessuna prova di playback reale sul Raspberry è stata completata.
+
+
+## Download pubblico
+
+La pagina https://tommyrighi.github.io/mediaPiayer/ è pubblicata dal ramo `gh-pages`, separato dal codice del server. Gli installer sono asset della release di anteprima `v1.0.0-desktop-preview`. La pagina e gli installer non contengono l’indirizzo di una biblioteca o credenziali; inviare queste informazioni privatamente a ogni invitato.
+
+Linux dispone di AppImage e pacchetti `.deb`, per x64 e ARM64. Richiede una sessione desktop con un portachiavi GNOME Keyring o KWallet attivo: l’app rifiuta il backend `basic_text` di Electron. Per Debian/Ubuntu preferire il pacchetto `.deb`; AppImage può richiedere FUSE, permessi di esecuzione e una distribuzione che supporti il sandbox Electron. Non disabilitare il sandbox per aggirare errori di avvio. ARM64 non include ARMv6 del Raspberry Pi Zero W: sono client desktop, non installer del server.
+
+La workflow `Desktop installers` consente di scegliere tutte le piattaforme oppure solo Linux. Le build Linux eseguono test Node e Go e verificano l’onboarding Electron con renderer sandbox e configurazione iniziale vuota sotto Xvfb. L’abilitazione dei namespace non privilegiati nella VM effimera del CI serve al test del sandbox, non modifica i dispositivi degli utenti.
+
+Su mobile la pagina collega il download ufficiale Tailscale e spiega l’accesso via browser. Non distribuisce un APK o un’app iOS MediaPiayer.

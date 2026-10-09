@@ -3,7 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const root = path.join(__dirname, '..');
 const requested = process.env.HELPER_TARGETS;
-const targets = requested ? requested.split(',') : ['darwin-arm64', 'darwin-amd64', 'windows-amd64'];
+const targets = requested ? requested.split(',') : ['darwin-arm64', 'darwin-amd64', 'windows-amd64', 'linux-amd64', 'linux-arm64'];
 for (const target of targets) {
   if (!['darwin-arm64','darwin-amd64','windows-amd64','windows-arm64','linux-amd64','linux-arm64'].includes(target)) throw new Error('Unsupported target');
   const [os, arch] = target.split('-');
