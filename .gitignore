@@ -26,6 +26,7 @@ coverage/
 
 # Database
 data/
+.deploy/
 *.db
 *.db-wal
 *.db-shm

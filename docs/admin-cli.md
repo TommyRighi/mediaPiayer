@@ -105,6 +105,11 @@ backup, esegue `git pull --ff-only`, reinstalla e compila. Il riavvio viene prop
 solo dopo una build riuscita. Se un passaggio fallisce, l'operazione si ferma senza
 fare reset del repository o cancellare modifiche locali.
 
+Con gli [aggiornamenti automatici via Tailscale](auto-deploy-tailscale.md),
+usa invece il workflow GitHub Actions. La console blocca l'aggiornamento del
+checkout quando trova `.deploy/config.json`, perché il servizio usa release
+separate e conserva il checkout iniziale per il rollback.
+
 ## Apertura automatica quando entri via SSH
 
 ```bash

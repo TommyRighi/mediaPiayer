@@ -12,6 +12,11 @@ fi
 
 cd "$REPO_DIR"
 
+# The Actions deployer owns updates once release management is configured.
+if [ -f .deploy/config.json ]; then
+  exit 0
+fi
+
 git fetch origin "$BRANCH" --quiet
 
 LOCAL=$(git rev-parse HEAD)

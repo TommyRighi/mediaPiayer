@@ -1,0 +1,73 @@
+name: Raspberry deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: raspberry-production
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix frontend
+      - run: npm run lint --prefix frontend
+      - run: npm run build
+      - run: npm test
+      - name: Package release
+        env:
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          node -e "require('node:fs').writeFileSync('release.json',JSON.stringify({commit:process.env.RELEASE_COMMIT}))"
+          tar -czf release.tgz package.json package-lock.json release.json server scripts/verify-build.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raspberry-release
+          path: release.tgz
+          retention-days: 7
+          if-no-files-found: error
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && vars.AUTO_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          name: raspberry-release
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:mediapiayer-ci
+          ping: ${{ vars.RPI_HOST }}
+      - name: Install and activate release
+        run: node scripts/deploy-upload.js
+        env:
+          RPI_HOST: ${{ vars.RPI_HOST }}
+          RPI_SSH_USER: ${{ vars.RPI_SSH_USER }}
+          RPI_DEPLOY_ROOT: ${{ vars.RPI_DEPLOY_ROOT }}
+          RPI_NODE_PATH: ${{ vars.RPI_NODE_PATH }}
+          RPI_SSH_KEY: ${{ secrets.RPI_SSH_KEY }}
+          RPI_KNOWN_HOSTS: ${{ secrets.RPI_KNOWN_HOSTS }}

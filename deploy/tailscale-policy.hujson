@@ -4,10 +4,12 @@
   "groups": { "group:admins": ["replace-with-your-admin@example.com"] },
   "tagOwners": {
     "tag:mediapiayer-server": ["group:admins"],
+    "tag:mediapiayer-ci": ["group:admins"],
     "tag:mediapiayer-viewer": ["group:admins"]
   },
   "grants": [
     { "src": ["tag:mediapiayer-viewer"], "dst": ["tag:mediapiayer-server"], "ip": ["tcp:443"] },
+    { "src": ["tag:mediapiayer-ci"], "dst": ["tag:mediapiayer-server"], "ip": ["tcp:22"] },
     { "src": ["group:admins"], "dst": ["tag:mediapiayer-server"], "ip": ["tcp:443", "tcp:22"] }
   ],
   "tests": [

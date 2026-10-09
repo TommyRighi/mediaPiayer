@@ -235,6 +235,7 @@ async function restore() {
   show(await worker('restore',{file})); console.log('Puoi riavviare il servizio dal menu Servizio.');
 }
 async function update() {
+  if (fs.existsSync(path.join(core.ROOT,'.deploy/config.json'))) throw new Error('Gli aggiornamenti automatici sono configurati. Usa GitHub Actions → Raspberry deploy; non aggiornare il checkout o le dipendenze della versione iniziale.');
   const dirty=await run('git',['status','--porcelain'],{capture:true});
   if (dirty.stdout) throw new Error('Ci sono modifiche locali: salvale prima. L’aggiornamento non le cancella.');
   if (!await confirm('Aggiornare il branch corrente con git pull --ff-only, installare dipendenze e ricompilare?')) return;

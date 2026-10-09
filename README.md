@@ -201,6 +201,12 @@ To launch it automatically in interactive Bash SSH sessions, opt in with
 See the [SSH admin console guide](docs/admin-cli.md) for first setup, existing
 system services, Transmission and backup/restore behavior.
 
+For automatic updates on every push to `main`, configure the
+[GitHub Actions deployment through Tailscale](docs/auto-deploy-tailscale.md).
+GitHub builds and checks the frontend; the Raspberry prepares native backend
+dependencies in a separate release, then restarts with a health check and
+automatic code/database rollback on startup failure.
+
 ## Publishing
 
 Before making the repository public or cutting a release, run through [the safe release checklist](docs/safe-release-checklist.md).
