@@ -3,6 +3,7 @@ const { authMiddleware, mediaAuth, adminMiddleware } = require('../../auth');
 const { nanoid } = require('nanoid');
 const path = require('path');
 const fs = require('fs');
+const { publicAlbum } = require('../../catalog-response');
 
 async function albumsRoutes(fastify) {
 
@@ -20,7 +21,7 @@ async function albumsRoutes(fastify) {
     if (search) { query += ' AND (a.title LIKE ? OR a.artist LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
     if (genre) { query += ' AND a.genre = ?'; params.push(genre); }
     query += ' GROUP BY a.id ORDER BY a.created_at DESC';
-    return db.prepare(query).all(...params);
+    return db.prepare(query).all(...params).map(publicAlbum);
   });
 
   fastify.get('/albums/:id', { preHandler: [authMiddleware] }, async (request, reply) => {
@@ -30,7 +31,7 @@ async function albumsRoutes(fastify) {
     const tracks = db.prepare(
       'SELECT * FROM music_tracks WHERE album_id = ? ORDER BY track_number, title'
     ).all(album.id);
-    return { ...album, tracks };
+    return publicAlbum({ ...album, tracks });
   });
 
   fastify.post('/albums', { preHandler: [authMiddleware, adminMiddleware] }, async (request) => {
@@ -41,7 +42,7 @@ async function albumsRoutes(fastify) {
     db.prepare(
       'INSERT INTO music_albums (id, title, artist, description, genre, year, cover_path) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(id, title, artist || '', description || '', genre || '', year || null, cover_path || null);
-    return db.prepare('SELECT * FROM music_albums WHERE id = ?').get(id);
+    return publicAlbum(db.prepare('SELECT * FROM music_albums WHERE id = ?').get(id));
   });
 
   fastify.patch('/albums/:id', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
@@ -58,7 +59,7 @@ async function albumsRoutes(fastify) {
     db.prepare(
       'UPDATE music_albums SET title=?, artist=?, description=?, genre=?, year=?, cover_path=?, updated_at=datetime(\'now\') WHERE id=?'
     ).run(album.title, album.artist, album.description, album.genre, album.year, album.cover_path, album.id);
-    return db.prepare('SELECT * FROM music_albums WHERE id = ?').get(album.id);
+    return publicAlbum(db.prepare('SELECT * FROM music_albums WHERE id = ?').get(album.id));
   });
 
   fastify.delete('/albums/:id', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {

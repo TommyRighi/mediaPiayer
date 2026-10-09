@@ -68,7 +68,7 @@ export default function AlbumDetailPage() {
       <div className="flex flex-col md:flex-row gap-6 p-4 md:p-8" style={{ background: 'linear-gradient(to bottom, var(--jf-surface-elevated), var(--jf-bg))' }}>
         <div className="w-48 md:w-56 flex-shrink-0">
           <div className="aspect-square rounded-lg overflow-hidden shadow-xl" style={{ background: 'var(--jf-surface)' }}>
-            {album.cover_path ? (
+            {album.has_cover ? (
               <img src={api.music.albums.coverUrl(album.id)} alt={album.title} className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center" style={{ color: 'var(--jf-text-muted)' }}>

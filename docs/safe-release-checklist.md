@@ -11,7 +11,7 @@ git ls-files data
 git status --ignored --short data
 ```
 
-- Keep runtime data out of commits. The repository ignores `data/`, `*.db`, `*.db-wal`, and `*.db-shm`.
+- Keep runtime data out of commits. The repository ignores `data/`, database files and SQL backups, private key files, and environment variants. Only `.env.example` templates should be tracked.
 - If database files were ever committed, purge them from history before publishing:
 
 ```bash
@@ -25,12 +25,13 @@ git gc --prune=now --aggressive
 ## Secrets
 
 - Do not commit `.env` or machine-specific config.
-- Use a long random `JWT_SECRET` in production.
+- Generate a random `JWT_SECRET` of at least 32 bytes in production. Empty values and known example secrets are rejected at startup.
 - Rotate credentials if a real secret was ever committed or shared.
 
 ## Production Configuration
 
 - Set `NODE_ENV=production`.
+- Set `HOST=127.0.0.1` behind Tailscale Serve and configure `PUBLIC_ORIGIN` with the exact HTTPS origin.
 - Set `CORS_ORIGIN` to the production origin instead of allowing broad browser access.
 - Review Helmet settings before internet exposure, including whether a production CSP can be enabled for the deployed frontend.
 - Run behind HTTPS when accessed outside a private network.
@@ -44,7 +45,14 @@ git gc --prune=now --aggressive
 
 ```bash
 npm run build
-cd frontend && npm run lint
+npm run lint --prefix frontend
+npm test
+npm test --prefix desktop
+npm audit
+npm audit --prefix frontend
+npm audit --prefix desktop
 ```
 
-The project has no configured test runner, so build and lint are the current automated release checks.
+The security regressions exercise social shutdown, WebSocket frame and account limits, catalog responses without local paths, secret validation, and ignored sensitive files. Deploy the frontend and backend together because catalog responses use availability flags instead of filesystem paths.
+
+Desktop dependencies override `@electron/get`'s `global-agent` to 4.1.3 to remove the vulnerable `roarr`/`sprintf-js` chain. Preserve the downloader's proxy bootstrap behavior when updating or removing this override.

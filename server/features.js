@@ -15,6 +15,7 @@ function setFeatures(values) {
     const save = db.prepare('INSERT INTO app_settings (name,value) VALUES (?,?) ON CONFLICT(name) DO UPDATE SET value=excluded.value');
     for (const [name, value] of Object.entries(values)) save.run(name, String(value));
   })();
+  if (!getFeatures().socialEnabled) require('./socket-security').closeSocialSockets();
   return getFeatures();
 }
 

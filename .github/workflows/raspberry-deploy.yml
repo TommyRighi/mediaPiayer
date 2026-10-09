@@ -26,6 +26,12 @@ jobs:
       - run: npm run lint --prefix frontend
       - run: npm run build
       - run: npm test
+      - name: Use Raspberry runtime for backend regression tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.2'
+      - run: npm ci
+      - run: npm test
       - name: Package release
         env:
           RELEASE_COMMIT: ${{ github.sha }}

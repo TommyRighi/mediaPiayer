@@ -7,7 +7,7 @@ a dare priorità alla riproduzione.
 
 ## Avvio
 
-Dopo avere installato Node.js 24, Git e clonato il repository:
+Dopo avere installato Node.js 20.19 o successivo, Git e clonato il repository:
 
 ```bash
 cd mediaPiayer

@@ -3,7 +3,7 @@ const path = require('node:path');
 const { nanoid } = require('nanoid');
 const { getDb } = require('./db');
 const { MEDIA_DIRS, isWithinAnyDir } = require('./utils');
-const sharp = require('sharp');
+const { transformImage } = require('./image-transform');
 
 async function readAudioMetadata(filePath) {
   try {
@@ -38,7 +38,7 @@ async function importAudio(filePath, options = {}) {
     const directory = path.join(MEDIA_DIRS[0], 'music', '.covers');
     fs.mkdirSync(directory, { recursive: true });
     const target = path.join(directory, `${id}.jpg`);
-    try { await sharp(picture.data, { limitInputPixels: 20000000 }).resize(800, 800, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toFile(target); coverPath = target; }
+    try { await transformImage(picture.data, target, { width: 800, height: 800, limitInputPixels: 20000000 }); coverPath = target; }
     catch { /* A broken picture must not prevent importing audio. */ }
   }
   if (albumId) {

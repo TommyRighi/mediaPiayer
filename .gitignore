@@ -5,6 +5,9 @@ node_modules/
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example
+!*.env.example
 
 # OS
 .DS_Store
@@ -30,6 +33,17 @@ data/
 *.db
 *.db-wal
 *.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.sql
+*.pem
+*.key
+*.p12
+*.pfx
 
 # Uploaded media
 media/*

@@ -1,14 +1,6 @@
-const sharp = require('sharp');
+const { transformImage } = require('./image-transform');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
-
-// Cap libvips concurrency on low-memory/low-core hosts (e.g. Raspberry Pi)
-// so image processing doesn't contend with concurrent ffmpeg transcodes
-// for all CPU cores at once.
-if (os.totalmem() / (1024 ** 3) <= 2 || os.cpus().length <= 4) {
-  sharp.concurrency(1);
-}
 
 const IMAGE_SIZES = {
   poster: {
@@ -51,10 +43,7 @@ async function generateVariant(originalPath, size, imageType) {
       return targetPath;
     }
 
-    await sharp(originalPath)
-      .resize({ width, withoutEnlargement: true })
-      .jpeg({ quality: QUALITY })
-      .toFile(targetPath);
+    await transformImage(originalPath, targetPath, { width, quality: QUALITY });
 
     return targetPath;
   } catch {

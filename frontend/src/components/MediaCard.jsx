@@ -8,12 +8,12 @@ export default function MediaCard({ media, progress, variant = 'portrait', grid 
   const landscape = variant === 'backdrop';
   const downloading = ['downloading', 'importing'].includes(media.download_status);
   const converting = downloading || ['pending', 'converting'].includes(media.transcode_status);
-  const unavailable = media.type === 'movie' && ((!media.file_path && !media.watchUrl) || media.file_size === 0);
+  const unavailable = media.type === 'movie' && ((!media.has_file && !media.watchUrl) || media.file_size === 0);
   const playable = !converting && !unavailable;
   const watched = progress?.completed;
   const percent = progress?.progress_seconds && media.duration ? Math.min(100, progress.progress_seconds / media.duration * 100) : 0;
   const minutes = media.duration > 0 ? Math.max(1, Math.round(media.duration / 60)) : null;
-  const poster = landscape && media.backdrop_path ? api.media.backdropUrl(media.id, 'sm') : media.poster_path ? api.media.posterUrl(media.id, 'sm') : null;
+  const poster = landscape && media.has_backdrop ? api.media.backdropUrl(media.id, 'sm') : media.has_poster ? api.media.posterUrl(media.id, 'sm') : null;
   const hue = [...media.title].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 70 + 165;
   return <article className={`jf-media-card ${landscape ? 'jf-media-card-landscape' : ''} ${grid ? 'jf-media-card-grid' : ''}`}>
     <Link to={linkTo} className="jf-media-card-link" title={media.title}>

@@ -136,6 +136,6 @@ test('SSH and systemd quoting preserve paths with spaces, quotes and expansion c
   const result=spawnSync('/bin/sh',['-c','printf %s '+quote(value)],{encoding:'utf8'});
   assert.equal(result.status,0);assert.equal(result.stdout,value);
   const unit=override({root:'/tmp/app path',node:'/node',envFile:'/tmp/$env%file'});
-  assert.match(unit,/WorkingDirectory="\/tmp\/app path"/);assert.ok(unit.includes('$$env%%file'));
+  assert.match(unit,/WorkingDirectory=\/tmp\/app path\n/);assert.ok(unit.includes('$$env%%file'));
   assert.throws(()=>override({root:'/tmp/a\nb',node:'/node',envFile:'/env'}),/Invalid systemd path/);
 });

@@ -64,5 +64,10 @@
     "toolsets": {
       "nsis": "1.2.1"
     }
+  },
+  "overrides": {
+    "@electron/get": {
+      "global-agent": "4.1.3"
+    }
   }
 }

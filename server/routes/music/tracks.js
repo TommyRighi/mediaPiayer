@@ -6,10 +6,11 @@ const { nanoid } = require('nanoid');
 const path = require('path');
 const fs = require('fs');
 const { AUDIO_EXTENSIONS, streamAudio } = require('./_common');
+const { publicTrack } = require('../../catalog-response');
 
 async function tracksRoutes(fastify) {
 
-  fastify.post('/tracks/:id/prepare', { preHandler: authMiddleware }, async request => require('../../music-prepare').queuePreparation(request.params.id, request.body?.retry === true));
+  fastify.post('/tracks/:id/prepare', { preHandler: authMiddleware }, async request => publicTrack(require('../../music-prepare').queuePreparation(request.params.id, request.body?.retry === true)));
   fastify.get('/tracks/:id/cover', { preHandler: mediaAuth }, async (request, reply) => {
     const track = getDb().prepare('SELECT COALESCE(t.cover_path,a.cover_path) AS cover FROM music_tracks t LEFT JOIN music_albums a ON a.id=t.album_id WHERE t.id=?').get(request.params.id);
     if (!track?.cover || !isWithinAnyDir(track.cover, MEDIA_DIRS) || !fs.existsSync(track.cover)) return reply.code(404).send({ error: 'No cover' });
@@ -25,14 +26,14 @@ async function tracksRoutes(fastify) {
     if (album_id) { query += ' AND album_id = ?'; params.push(album_id); }
     if (search) { query += ' AND (title LIKE ? OR artist LIKE ? OR album_id IN (SELECT id FROM music_albums WHERE title LIKE ? OR artist LIKE ?))'; params.push(...Array(4).fill(`%${search}%`)); }
     query += ' ORDER BY album_id, track_number, title';
-    return db.prepare(query).all(...params);
+    return db.prepare(query).all(...params).map(publicTrack);
   });
 
   fastify.get('/tracks/:id', { preHandler: [authMiddleware] }, async (request, reply) => {
     const db = getDb();
     const track = db.prepare('SELECT * FROM music_tracks WHERE id = ?').get(request.params.id);
     if (!track) return reply.status(404).send({ error: 'Track not found' });
-    return track;
+    return publicTrack(track);
   });
 
   fastify.get('/tracks/:id/stream', { preHandler: [mediaAuth] }, async (request, reply) => {
@@ -53,7 +54,7 @@ async function tracksRoutes(fastify) {
     if (album_id !== undefined) track.album_id = album_id || null;
     db.prepare('UPDATE music_tracks SET title=?, artist=?, track_number=?, album_id=? WHERE id=?')
       .run(track.title, track.artist, track.track_number, track.album_id, track.id);
-    return db.prepare('SELECT * FROM music_tracks WHERE id = ?').get(track.id);
+    return publicTrack(db.prepare('SELECT * FROM music_tracks WHERE id = ?').get(track.id));
   });
 
   fastify.delete('/tracks/:id', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
@@ -102,7 +103,7 @@ async function tracksRoutes(fastify) {
     }
     const { importAudio } = require('../../music-library');
     const result = await importAudio(filePath, { albumId, title: title?.value || undefined, fallbackTitle: trackTitle, artist: trackArtist, trackNumber: trackNum });
-    return result.track;
+    return publicTrack(result.track);
   });
 }
 

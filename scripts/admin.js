@@ -245,10 +245,10 @@ async function update() {
 }
 async function main() {
   if (args.includes('--help') || args.includes('-h')) {
-    console.log('MediaPiayer Admin CLI\n\n  npm run admin\n  npm run admin -- --status\n  npm run admin -- --env /etc/mediapiayer.env\n\nRichiede Node 24. Il menu usa gli stessi permessi dell’utente SSH.\n--status non richiede un terminale interattivo; nessun segreto viene mostrato.');return;
+    console.log('MediaPiayer Admin CLI\n\n  npm run admin\n  npm run admin -- --status\n  npm run admin -- --env /etc/mediapiayer.env\n\nRichiede Node 20.19 o successivo. Il menu usa gli stessi permessi dell’utente SSH.\n--status non richiede un terminale interattivo; nessun segreto viene mostrato.');return;
   }
   try { if (fs.existsSync(envFile)) fs.accessSync(envFile,fs.constants.R_OK); } catch { throw new Error('File env non leggibile. Usa --env per selezionare la configurazione, oppure sudo per una installazione di sistema.'); }
-  if (Number(process.versions.node.split('.')[0]) !== 24) throw new Error('La console richiede Node.js 24, come il backend. Se usi nvm: nvm use 24.');
+  if (!require('../server/runtime').supportsNode(process.versions.node)) throw new Error('La console richiede Node.js 20.19 o successivo, come il backend.');
   if (args.includes('--status')) { await status();return; }
   if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error('Serve un terminale interattivo. Usa ssh -t oppure --status.');
   let output=new Writable({write(chunk,encoding,done){if(!muted)process.stdout.write(chunk,encoding);done();}});

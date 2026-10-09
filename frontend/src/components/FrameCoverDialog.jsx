@@ -59,7 +59,7 @@ export default function FrameCoverDialog({ media, onFrame, onClose }) {
   const titleId = useId();
   const descriptionId = useId();
   const episodes = Object.values(media.seasons || {}).flat();
-  const [episodeId, setEpisodeId] = useState(episodes.find(item => item.file_path && !['pending', 'converting'].includes(item.transcode_status))?.id || '');
+  const [episodeId, setEpisodeId] = useState(episodes.find(item => item.has_file && !['pending', 'converting'].includes(item.transcode_status))?.id || '');
   const episode = episodes.find(item => item.id === episodeId);
   const hls = episode ? episode.hls_available : media.hls_available;
   const source = episode ? hls ? api.media.episodeHlsUrl(episode.id) : api.media.episodeVideoUrl(episode.id) : hls ? api.media.hlsUrl(media.id) : api.media.videoUrl(media.id);
@@ -67,7 +67,7 @@ export default function FrameCoverDialog({ media, onFrame, onClose }) {
   return <dialog ref={dialog} className="jf-frame-dialog" aria-labelledby={titleId} aria-describedby={descriptionId} onCancel={event => { event.preventDefault(); onClose(); }}>
     <div className="flex justify-between items-start gap-4 mb-3"><h2 id={titleId} className="text-xl font-semibold">Choose a video frame</h2><button className="jf-btn-secondary" onClick={onClose} aria-label="Close frame selection">×</button></div>
     <p id={descriptionId} className="text-sm mb-5" style={{ color: 'var(--jf-text-secondary)' }}>Seek to the moment you want, then capture the frame. You can crop it before saving the cover.</p>
-    {media.type === 'series' && <label className="block text-sm mb-4">Episode<select className="jf-input mt-2" value={episodeId} onChange={event => setEpisodeId(event.target.value)}><option value="" disabled>Choose an episode</option>{episodes.map(item => <option key={item.id} value={item.id} disabled={!item.file_path || ['pending', 'converting'].includes(item.transcode_status)}>S{item.season_number} E{item.episode_number} · {item.title}</option>)}</select></label>}
+    {media.type === 'series' && <label className="block text-sm mb-4">Episode<select className="jf-input mt-2" value={episodeId} onChange={event => setEpisodeId(event.target.value)}><option value="" disabled>Choose an episode</option>{episodes.map(item => <option key={item.id} value={item.id} disabled={!item.has_file || ['pending', 'converting'].includes(item.transcode_status)}>S{item.season_number} E{item.episode_number} · {item.title}</option>)}</select></label>}
     {media.type === 'movie' || episode ? <FrameVideo key={source} source={source} hls={hls} onFrame={onFrame} /> : <p>No episodes available to preview. Upload an image instead.</p>}
   </dialog>;
 }

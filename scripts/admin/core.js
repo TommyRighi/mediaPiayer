@@ -99,7 +99,7 @@ async function probe(config) {
 function unitQuote(value) { return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%')}"`; }
 function serviceUnit(root, envFile, config, node = process.execPath, argv = [`--env-file=${envFile}`, path.join(root,'server/server.js')]) {
   if ([root,envFile,node].some(value => /[\r\n\0]/.test(value))) throw new Error('Percorso del servizio non valido.');
-  return `[Unit]\nDescription=MediaPiayer media server\nAfter=network-online.target\n\n[Service]\nType=simple\nWorkingDirectory=${unitQuote(root)}\nExecStart=${[node,...argv].map(value => unitQuote(value).replace(/\$/g, () => '$$')).join(' ')}\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=20\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`;
+  return `[Unit]\nDescription=MediaPiayer media server\nAfter=network-online.target\n\n[Service]\nType=simple\nWorkingDirectory=${root.replace(/%/g, '%%')}\nExecStart=${[node,...argv].map(value => unitQuote(value).replace(/\$/g, () => '$$')).join(' ')}\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=20\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`;
 }
 function redact(text, config) {
   let output = String(text).replace(/https?:\/\/[^\s/@]+:[^\s/@]+@/g, 'http://[credenziali]@');

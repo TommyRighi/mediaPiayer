@@ -4,6 +4,7 @@ const { isWithinDir, isWithinAnyDir, streamVideo, streamHlsFile, MEDIA_DIR, MEDI
 const { generateVariant } = require('../imageProcessor');
 const path = require('path');
 const fs = require('fs');
+const { publicMedia } = require('../catalog-response');
 
 async function mediaRoutes(fastify) {
   fastify.get('/api/media/filters', { preHandler: authMiddleware }, async () => {
@@ -88,7 +89,7 @@ async function mediaRoutes(fastify) {
       }
     }
 
-    return { media, hasMore };
+    return { media: media.map(publicMedia), hasMore };
   });
 
   fastify.get('/api/media/:id/poster', { preHandler: mediaAuth }, async (request, reply) => {
@@ -236,7 +237,7 @@ async function mediaRoutes(fastify) {
       media.audio_tracks = [];
     }
 
-    return { media };
+    return { media: publicMedia(media) };
   });
 
   fastify.get('/api/media/:id/video', { preHandler: mediaAuth }, async (request, reply) => {
@@ -368,7 +369,7 @@ async function mediaRoutes(fastify) {
     db.prepare(`UPDATE media SET ${setClauses} WHERE id = ?`).run(...values, request.params.id);
 
     const updated = db.prepare('SELECT * FROM media WHERE id = ?').get(request.params.id);
-    return { media: updated };
+    return { media: publicMedia(updated) };
   });
 
   fastify.delete('/api/media/:id', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {

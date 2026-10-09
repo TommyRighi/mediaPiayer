@@ -29,7 +29,7 @@ export default function AudioPlayer() {
       {jam.id && <div className="ap-notice"><button onClick={() => navigate('/music/jam')}>Jam · {jam.connected ? 'Listening together' : 'Reconnecting'}</button>{jam.needsPlay && <button onClick={jam.resume}>Enable sound</button>}</div>}
       <div className="ap-content">
         <div className="ap-track-info" onClick={() => currentTrack.album_id && navigate(`/music/album/${currentTrack.album_id}`)}>
-          {(currentTrack.album_id || currentTrack.cover_path) ? (
+          {(currentTrack.album_id || currentTrack.has_cover) ? (
             <img src={api.music.tracks.coverUrl(currentTrack.id)} alt="" className="ap-cover" onError={event => { event.currentTarget.style.visibility = 'hidden'; }} />
           ) : (
             <div className="ap-cover ap-cover-placeholder">

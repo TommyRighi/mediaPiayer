@@ -1,6 +1,7 @@
 const { getDb } = require('../db');
 const { authMiddleware } = require('../auth');
 const { nanoid } = require('nanoid');
+const { publicHistory } = require('../catalog-response');
 
 async function watchRoutes(fastify) {
   fastify.post('/api/watch/activity', { preHandler: authMiddleware }, async (request, reply) => {
@@ -66,7 +67,7 @@ async function watchRoutes(fastify) {
        LIMIT 50`
     ).all(request.user.id);
 
-    return { history: progress };
+    return { history: progress.map(publicHistory) };
   });
 }
 

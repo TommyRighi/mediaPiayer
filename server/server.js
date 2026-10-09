@@ -83,7 +83,7 @@ await fastify.register(rateLimit, {
     },
   });
   await fastify.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 * 1024 } });
-  await fastify.register(websocket);
+  await fastify.register(websocket, require('./socket-security').websocketOptions);
 
   fastify.addHook('onSend', async (request, reply, payload) => {
     if (!request.user || request.headers['x-background-request'] === '1') return payload;

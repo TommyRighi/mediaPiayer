@@ -4,6 +4,7 @@ const { randomBytes, randomUUID } = require('node:crypto');
 const { getDb } = require('./db');
 
 if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET is required');
+if (/change[_-]?me|change-in-production|replace-with|your[_-]?(?:jwt[_-]?)?secret/i.test(process.env.JWT_SECRET)) throw new Error('JWT_SECRET must be generated randomly; example secrets are not allowed');
 if (process.env.NODE_ENV === 'production' && Buffer.byteLength(process.env.JWT_SECRET) < 32) throw new Error('JWT_SECRET must contain at least 32 bytes');
 const JWT_SECRET = process.env.JWT_SECRET;
 const USER_FIELDS = 'id, email, display_name, avatar_url, role, created_at, token_version, history_enabled';

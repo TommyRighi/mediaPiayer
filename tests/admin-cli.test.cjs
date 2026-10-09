@@ -88,7 +88,7 @@ test('SQLite backup includes WAL writes, restore restores users and invalidates 
 
 test('systemd unit quotes paths, contains no credentials and hook install is reversible', () => {
   const unit=core.serviceUnit('/opt/media player',envFile,config,'/usr/bin/node');
-  assert.match(unit,/WorkingDirectory="\/opt\/media player"/);
+  assert.match(unit,/WorkingDirectory=\/opt\/media player\n/);
   assert.match(unit,/--env-file=/);
   assert.match(unit,/NoNewPrivileges=true/);
   assert.ok(!unit.includes(config.JWT_SECRET));

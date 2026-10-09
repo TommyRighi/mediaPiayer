@@ -6,6 +6,7 @@ const albumsRoutes = require('./albums');
 const tracksRoutes = require('./tracks');
 const playlistsRoutes = require('./playlists');
 const youtubeRoutes = require('./youtube');
+const { publicTrack } = require('../../catalog-response');
 
 async function musicRoutes(fastify) {
   const prefix = '/api/music';
@@ -25,7 +26,7 @@ async function musicRoutes(fastify) {
       JOIN music_tracks t ON t.id = f.track_id
       WHERE f.user_id = ?
       ORDER BY f.created_at DESC
-    `).all(request.user.id);
+    `).all(request.user.id).map(publicTrack);
   });
 
   fastify.post(prefix + '/favorites/:trackId', { preHandler: [authMiddleware] }, async (request, reply) => {
@@ -77,7 +78,7 @@ async function musicRoutes(fastify) {
     const db = getDb();
     const { limit } = request.query;
     const n = Math.min(parseInt(limit) || 20, 100);
-    return db.prepare('SELECT * FROM music_tracks ORDER BY RANDOM() LIMIT ?').all(n);
+    return db.prepare('SELECT * FROM music_tracks ORDER BY RANDOM() LIMIT ?').all(n).map(publicTrack);
   });
 
   fastify.post(prefix + '/scan', { preHandler: [authMiddleware, adminMiddleware] }, async () => {

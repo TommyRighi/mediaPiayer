@@ -14,7 +14,7 @@ della configurazione e dei media vengono mantenuti tramite collegamenti.
 
 ## Preparazione del Raspberry, una volta sola
 
-Servono Linux con systemd, Node 24, npm, tar, flock, OpenSSH e Tailscale. La versione
+Servono Linux con systemd, Node 20.19 o successivo, npm, tar, flock, OpenSSH e Tailscale. La versione
 attuale deve essere compilata, funzionante e avviata dal servizio systemd.
 `NODE_ENV=production`, `PUBLIC_ORIGIN`, `HOST=127.0.0.1` e l'eventuale porta devono
 essere nel file env usato dal servizio. Le dipendenze native richiedono gli stessi
@@ -34,7 +34,7 @@ node scripts/deploy-release.js setup --root "$PWD" --env-file "$PWD/.env" --mode
 
 Il setup crea un override del servizio `mediapiayer.service`, salva la versione
 iniziale e verifica il riavvio. Stampa percorso del progetto, binario Node e
-utente SSH da inserire nelle variabili GitHub. Usa Node 24 anche per questo comando.
+utente SSH da inserire nelle variabili GitHub. Usa Node 20.19 o successivo anche per questo comando.
 `--npm /percorso/npm` seleziona npm quando non si trova accanto a Node.
 Se necessario, abilita la permanenza del servizio utente con
 `sudo loginctl enable-linger "$USER"`.
@@ -100,7 +100,7 @@ In **Settings → Secrets and variables → Actions**, aggiungi queste variabili
 | `RPI_HOST` | IPv4 Tailscale o hostname MagicDNS del Raspberry, senza schema o porta |
 | `RPI_SSH_USER` | Utente del servizio sul Raspberry |
 | `RPI_DEPLOY_ROOT` | Percorso assoluto del checkout, stampato dal setup |
-| `RPI_NODE_PATH` | Percorso assoluto di Node 24, stampato dal setup |
+| `RPI_NODE_PATH` | Percorso assoluto di Node 20.19 o successivo, stampato dal setup |
 | `AUTO_DEPLOY_ENABLED` | `true`, dopo avere completato configurazione e accesso |
 
 Aggiungi i Secrets seguenti. Non inserire chiavi private nei file del repository.

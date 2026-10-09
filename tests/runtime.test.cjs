@@ -6,6 +6,11 @@ const path = require('node:path');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
 const root = path.join(__dirname,'..');
+test('runtime accepts Node 20.19 and supported newer release lines', () => {
+  const { supportsNode } = require('../server/runtime');
+  for (const version of ['20.19.2', '20.20.0', '22.0.0', '24.13.0']) assert.equal(supportsNode(version), true);
+  for (const version of ['18.20.0', '20.18.3', '21.7.3']) assert.equal(supportsNode(version), false);
+});
 test('production serves the final compressed SPA and enforces origin checks', {skip:!fs.existsSync(path.join(root,'server/dist/index.html')),timeout:15000}, async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(),'mediapiayer-runtime-test-'));
   const port = await new Promise(resolve => { const server=net.createServer();server.listen(0,'127.0.0.1',()=>{const port=server.address().port;server.close(()=>resolve(port));}); });

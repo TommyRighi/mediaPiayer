@@ -38,7 +38,8 @@ function unitQuote(value) {
   return '"' + value.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/%/g,'%%').replace(/\$/g,()=>'$$') + '"';
 }
 function override(config) {
-  return `[Service]\nWorkingDirectory=${unitQuote(config.root)}\nExecStart=\nExecStart=${unitQuote(config.node)} ${unitQuote('--env-file='+config.envFile)} ${unitQuote(path.join(config.root,'.deploy/current/server/server.js'))}\n`;
+  if (/[\r\n\0]/.test(config.root)) throw new Error('Invalid systemd path');
+  return `[Service]\nWorkingDirectory=${config.root.replace(/%/g,'%%')}\nExecStart=\nExecStart=${unitQuote(config.node)} ${unitQuote('--env-file='+config.envFile)} ${unitQuote(path.join(config.root,'.deploy/current/server/server.js'))}\n`;
 }
 function service(config, action) {
   return config.mode === 'user' ? run('systemctl',['--user',action,config.service]) : run('sudo',['-n','systemctl',action,config.service]);
@@ -104,9 +105,13 @@ async function deploy(config, input, adapters = {}) {
     await unpack(input.archive,release);
     const metadata = JSON.parse(fs.readFileSync(path.join(release,'release.json'),'utf8'));
     if (metadata.commit !== input.commit) throw new Error('Release commit does not match');
-    await execute(config.npm,['ci','--omit=dev','--no-audit','--no-fund'],{ cwd:release,env:{ ...process.env,PATH:path.dirname(config.node)+path.delimiter+(process.env.PATH || '') } });
+    const armv6 = os.machine() === 'armv6l';
+    await execute(config.npm,['ci','--omit=dev', ...(armv6 ? ['--omit=optional'] : []), '--no-audit','--no-fund'],{ cwd:release,env:{ ...process.env,
+      ...(armv6 ? { npm_config_build_from_source: 'true', npm_config_jobs: '1' } : {}),
+      PATH:path.dirname(config.node)+path.delimiter+(process.env.PATH || '') } });
     await execute(config.node,['scripts/verify-build.js'],{ cwd:release });
-    await execute(config.node,['-e',"require('sharp');require('bcrypt');const D=require('better-sqlite3');new D(':memory:').close()"],{ cwd:release });
+    await execute(config.node,['-e',`${armv6 ? '' : "require('sharp');"}require('bcrypt');const D=require('better-sqlite3');new D(':memory:').close()`],{ cwd:release });
+    if (armv6) await execute('ffmpeg', ['-version'], { cwd:release, capture:true });
     linkShared(release,config);
     // Everything expensive happens before interrupting existing playback.
     await control(config,'stop'); stopped = true;
@@ -132,7 +137,7 @@ async function deploy(config, input, adapters = {}) {
 }
 async function setup(options) {
   if (process.platform !== 'linux') throw new Error('Setup requires Linux with systemd');
-  if (Number(process.versions.node.split('.')[0]) !== 24) throw new Error('Use Node 24 for setup and deployment');
+  if (!require('../server/runtime').supportsNode(process.versions.node)) throw new Error('Use Node 20.19 or newer for setup and deployment');
   const root = fs.realpathSync(options.root || process.cwd());
   const envFile = fs.realpathSync(options['env-file'] || path.join(root,'.env'));
   const env = parseEnv(fs.readFileSync(envFile,'utf8'));
@@ -150,7 +155,7 @@ async function setup(options) {
   for (const folder of ['data','media']) fs.mkdirSync(path.join(root,folder),{ recursive:true });
   const config = { root,envFile,mode,service:name,node:process.execPath,npm:options.npm || path.join(path.dirname(process.execPath),'npm'),
     databasePath:path.resolve(root,env.DATABASE_PATH || 'data/mediapiayer.db'),healthUrl:`http://127.0.0.1:${env.PORT || 3000}/api/auth/config`,healthTimeoutMs:30000 };
-  if (!fs.existsSync(config.npm) || !fs.existsSync(path.join(root,'node_modules/better-sqlite3'))) throw new Error('Install Node 24 and the existing backend dependencies first');
+  if (!fs.existsSync(config.npm) || !fs.existsSync(path.join(root,'node_modules/better-sqlite3'))) throw new Error('Install Node 20.19 or newer and the existing backend dependencies first');
   if (!await healthy(config)) throw new Error('The existing server must pass its health check before setup');
   const bootstrap = path.join(directory,'releases','bootstrap');
   if (!fs.existsSync(path.join(root,'server/dist/index.html'))) throw new Error('Build and start the existing application before setup');

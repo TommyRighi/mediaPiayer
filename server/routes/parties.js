@@ -2,6 +2,9 @@ const { getDb } = require('../db');
 const { authMiddleware } = require('../auth');
 const { authenticate, readAuthToken } = require('../auth');
 const { nanoid } = require('nanoid');
+const { guardSocket, closeSocket } = require('../socket-security');
+const { getFeatures } = require('../features');
+const { publicParty } = require('../catalog-response');
 
 const partySockets = new Map();
 const messageRateLimits = new Map();
@@ -41,7 +44,7 @@ async function partyRoutes(fastify) {
     db.prepare('INSERT INTO party_members (id, party_id, user_id) VALUES (?, ?, ?)').run(nanoid(), partyId, request.user.id);
 
     const party = db.prepare('SELECT * FROM watch_parties WHERE id = ?').get(partyId);
-    return { party };
+    return { party: publicParty(party) };
   });
 
   fastify.post('/api/parties/join', { preHandler: authMiddleware }, async (request, reply) => {
@@ -65,7 +68,7 @@ async function partyRoutes(fastify) {
       db.prepare('INSERT INTO party_members (id, party_id, user_id) VALUES (?, ?, ?)').run(nanoid(), party.id, request.user.id);
     }
 
-    return { party };
+    return { party: publicParty(party) };
   });
 
   fastify.get('/api/parties/:id', { preHandler: authMiddleware }, async (request, reply) => {
@@ -99,7 +102,7 @@ async function partyRoutes(fastify) {
        FROM watch_requests wr WHERE wr.party_id = ?`
     ).get(party.id);
 
-    return { party, members, request: watchRequest || null };
+    return { party: publicParty(party), members, request: watchRequest || null };
   });
 
   fastify.get('/api/parties/:id/ws', { websocket: true }, (socket, request) => {
@@ -110,6 +113,7 @@ async function partyRoutes(fastify) {
       userId = user.id;
       socket.authUserId = userId;
       socket.authSessionId = user.sessionId;
+      socket.authToken = readAuthToken(request);
       const db = getDb();
       const member = db.prepare(
         'SELECT id FROM party_members WHERE party_id = ? AND user_id = ?'
@@ -133,7 +137,10 @@ async function partyRoutes(fastify) {
     const expiresAt = getDb().prepare('SELECT expires_at FROM auth_sessions WHERE id = ?').get(socket.authSessionId).expires_at;
     // Revocations from the local users CLI also invalidate already-open sockets.
     const revocationTimer = setInterval(() => {
-      try { authenticate(readAuthToken(request)); } catch { socket.close(4001, 'Session revoked'); }
+      try {
+        authenticate(readAuthToken(request));
+        if (!getFeatures().socialEnabled) closeSocket(socket, 4003, 'Shared watching disabled');
+      } catch { closeSocket(socket, 4001, 'Session revoked'); }
     }, 5000);
     revocationTimer.unref();
     socket.once('close', () => clearInterval(revocationTimer));
@@ -141,6 +148,8 @@ async function partyRoutes(fastify) {
     expiryTimer.unref();
     socket.once('close', () => clearTimeout(expiryTimer));
 
+    const allowMessage = guardSocket(socket, userId, `party:${partyId}`);
+    if (!allowMessage) return;
     if (!partySockets.has(partyId)) {
       partySockets.set(partyId, new Set());
     }
@@ -169,12 +178,14 @@ async function partyRoutes(fastify) {
     }
 
     socket.on('message', (rawMsg) => {
+      if (!allowMessage(rawMsg)) return;
       try {
         const msg = JSON.parse(rawMsg.toString());
 
         if (['play', 'pause', 'seek'].includes(msg.type)) {
           const db = getDb();
           const position = typeof msg.position === 'number' ? msg.position : 0;
+          if (!Number.isFinite(position) || position < 0 || position > 86400) return;
 
           db.prepare('UPDATE watch_parties SET position = ?, is_playing = ? WHERE id = ?').run(
             position, msg.type === 'play' ? 1 : 0, partyId

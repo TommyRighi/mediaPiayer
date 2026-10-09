@@ -1,6 +1,7 @@
 const { getDb } = require('../../db');
 const { authMiddleware } = require('../../auth');
 const { nanoid } = require('nanoid');
+const { publicPlaylist } = require('../../catalog-response');
 
 async function playlistsRoutes(fastify) {
 
@@ -15,7 +16,7 @@ async function playlistsRoutes(fastify) {
        WHERE p.user_id = ?
        GROUP BY p.id
        ORDER BY p.updated_at DESC`
-    ).all(request.user.id);
+    ).all(request.user.id).map(publicPlaylist);
   });
 
   fastify.get('/playlists/:id', { preHandler: [authMiddleware] }, async (request, reply) => {
@@ -30,7 +31,7 @@ async function playlistsRoutes(fastify) {
       WHERE pt.playlist_id = ?
       ORDER BY pt.position
     `).all(playlist.id);
-    return { ...playlist, tracks };
+    return publicPlaylist({ ...playlist, tracks });
   });
 
   fastify.post('/playlists', { preHandler: [authMiddleware] }, async (request) => {
@@ -41,7 +42,7 @@ async function playlistsRoutes(fastify) {
     db.prepare(
       'INSERT INTO playlists (id, user_id, name, description) VALUES (?, ?, ?, ?)'
     ).run(id, request.user.id, name, description || '');
-    return db.prepare('SELECT * FROM playlists WHERE id = ?').get(id);
+    return publicPlaylist(db.prepare('SELECT * FROM playlists WHERE id = ?').get(id));
   });
 
   fastify.patch('/playlists/:id', { preHandler: [authMiddleware] }, async (request, reply) => {
@@ -54,7 +55,7 @@ async function playlistsRoutes(fastify) {
     if (description !== undefined) playlist.description = description;
     db.prepare('UPDATE playlists SET name=?, description=?, updated_at=datetime(\'now\') WHERE id=?')
       .run(playlist.name, playlist.description, playlist.id);
-    return db.prepare('SELECT * FROM playlists WHERE id = ?').get(playlist.id);
+    return publicPlaylist(db.prepare('SELECT * FROM playlists WHERE id = ?').get(playlist.id));
   });
 
   fastify.delete('/playlists/:id', { preHandler: [authMiddleware] }, async (request, reply) => {

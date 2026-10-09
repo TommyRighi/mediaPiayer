@@ -42,7 +42,7 @@ function WatchSession({ mediaId, episodeId, restart }) {
         if (conversion.status === 'failed' || item.transcode_status === 'failed') {
           throw new Error('This video could not be prepared. Ask the administrator to retry its conversion.');
         }
-        if (!item.file_path) throw new Error('This video has not been uploaded yet.');
+        if (!item.has_file) throw new Error('This video has not been uploaded yet.');
         const src = episodeId
           ? (item.hls_available ? api.media.episodeHlsUrl(episodeId) : api.media.episodeVideoUrl(episodeId))
           : (item.hls_available ? api.media.hlsUrl(mediaId) : api.media.videoUrl(mediaId));

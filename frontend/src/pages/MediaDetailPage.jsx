@@ -230,13 +230,13 @@ export default function MediaDetailPage() {
   }
 
   const downloadPending = ['downloading', 'importing'].includes(media.download_status);
-  const playbackBlocked = media.type === 'movie' && (downloadPending || !media.file_path || media.file_size === 0 || ['pending', 'converting'].includes(media.transcode_status));
+  const playbackBlocked = media.type === 'movie' && (downloadPending || !media.has_file || media.file_size === 0 || ['pending', 'converting'].includes(media.transcode_status));
   const isConverting = media.transcode_status === 'pending' || media.transcode_status === 'converting';
   const isConvertFailed = media.transcode_status === 'failed';
 
   return (
     <div style={{ marginTop: 'calc(var(--jf-topbar-height) * -1)' }}>
-      <div className="jf-backdrop" style={media.backdrop_path ? { backgroundImage: `url(${api.media.backdropUrl(media.id, 'md')}&v=${imageVersion})` } : { background: 'linear-gradient(to bottom right, #292929, #101010)' }}>
+      <div className="jf-backdrop" style={media.has_backdrop ? { backgroundImage: `url(${api.media.backdropUrl(media.id, 'md')}&v=${imageVersion})` } : { background: 'linear-gradient(to bottom right, #292929, #101010)' }}>
         <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--jf-bg) 0%, transparent 60%)' }} />
       </div>
 
@@ -245,7 +245,7 @@ export default function MediaDetailPage() {
           <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-end md:items-start">
             <div className="jf-detail-poster mx-auto md:mx-0">
               <div style={{ background: 'var(--jf-surface)' }}>
-                {media.poster_path ? (
+                {media.has_poster ? (
                   <img src={`${api.media.posterUrl(media.id, 'md')}&v=${imageVersion}`} alt={media.title} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-4xl md:text-6xl" style={{ color: 'var(--jf-text-muted)' }}>
@@ -259,7 +259,7 @@ export default function MediaDetailPage() {
               {imageMessage && <p role="status" className="text-sm mb-4">{imageMessage}</p>}
               {isAdmin && !editing && <div className="flex flex-wrap gap-2 justify-center md:justify-start mb-5">
                 <label className="jf-btn-secondary cursor-pointer"><span>{uploadingImageType === 'poster' ? 'Saving cover…' : 'Upload cover'}</span><input aria-label="Upload cover image" className="sr-only" type="file" accept="image/*" disabled={!!uploadingImageType} onChange={event => handleImageFileSelect(event, 'poster')} /></label>
-                <button className="jf-btn-secondary" disabled={!!uploadingImageType || (media.type === 'movie' && (!media.file_path || media.file_size === 0 || ['pending', 'converting'].includes(media.transcode_status)))} onClick={() => setFrameType('poster')}>Cover from video frame</button>
+                <button className="jf-btn-secondary" disabled={!!uploadingImageType || (media.type === 'movie' && (!media.has_file || media.file_size === 0 || ['pending', 'converting'].includes(media.transcode_status)))} onClick={() => setFrameType('poster')}>Cover from video frame</button>
               </div>}
 
               {editing ? (
@@ -275,8 +275,8 @@ export default function MediaDetailPage() {
                     <button onClick={() => setEditing(false)} className="jf-btn-secondary">Cancel</button>
                   </div>
                   <div className="flex flex-wrap gap-3 mt-2">
-                    <button className="jf-btn-outline" disabled={!!uploadingImageType || (media.type === 'movie' && (!media.file_path || media.file_size === 0 || ['pending', 'converting'].includes(media.transcode_status)))} onClick={() => setFrameType('poster')}>Cover from frame</button>
-                    <button className="jf-btn-outline" disabled={!!uploadingImageType || (media.type === 'movie' && (!media.file_path || media.file_size === 0 || ['pending', 'converting'].includes(media.transcode_status)))} onClick={() => setFrameType('backdrop')}>Background from frame</button>
+                    <button className="jf-btn-outline" disabled={!!uploadingImageType || (media.type === 'movie' && (!media.has_file || media.file_size === 0 || ['pending', 'converting'].includes(media.transcode_status)))} onClick={() => setFrameType('poster')}>Cover from frame</button>
+                    <button className="jf-btn-outline" disabled={!!uploadingImageType || (media.type === 'movie' && (!media.has_file || media.file_size === 0 || ['pending', 'converting'].includes(media.transcode_status)))} onClick={() => setFrameType('backdrop')}>Background from frame</button>
                     <label className="jf-btn-outline cursor-pointer flex items-center gap-2" style={{ fontSize: '13px' }}>
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" /></svg>
                       {uploadingImageType === 'poster' ? 'Uploading...' : 'Edit Poster'}
@@ -337,7 +337,7 @@ export default function MediaDetailPage() {
                           </button>
                         </div>
                       )}
-                      {media.file_path && !downloadStatus && (
+                      {media.has_file && !downloadStatus && (
                         <div className="text-xs mt-1" style={{ color: 'var(--jf-text-muted)' }}>This will replace the existing video file.</div>
                       )}
                     </div>

@@ -8,7 +8,7 @@ function AlbumCard({ album }) {
   return (
     <Link to={`/music/album/${album.id}`} className="block group">
       <div className="relative aspect-square rounded-lg overflow-hidden mb-2" style={{ background: 'var(--jf-surface-elevated)' }}>
-        {album.cover_path ? (
+        {album.has_cover ? (
           <img loading="lazy" decoding="async" src={api.music.albums.coverUrl(album.id)} alt={album.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
         ) : (
           <div className="w-full h-full flex items-center justify-center" style={{ color: 'var(--jf-text-muted)' }}>

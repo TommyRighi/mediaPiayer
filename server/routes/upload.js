@@ -3,10 +3,11 @@ const { authMiddleware, adminMiddleware } = require('../auth');
 const { nanoid } = require('nanoid');
 const path = require('path');
 const fs = require('fs');
-const sharp = require('sharp');
+const { transformImage, UPLOAD_IMAGE_FORMAT } = require('../image-transform');
 const { needsTranscoding, enqueue } = require('../transcode');
 const { MEDIA_DIR, MEDIA_DIRS, pickBestMediaDir, isWithinAnyDir } = require('../utils');
 const { generateAllVariants } = require('../imageProcessor');
+const { publicMedia, publicEpisode } = require('../catalog-response');
 const { extractAndStoreAll } = require('../track-extractor');
 
 const ALLOWED_EXTENSIONS = ['.mp4', '.mkv', '.webm', '.mov', '.avi'];
@@ -147,7 +148,7 @@ async function uploadRoutes(fastify) {
           enqueue('movie', id);
         }
 
-        return { media: db.prepare('SELECT * FROM media WHERE id = ?').get(id) };
+        return { media: publicMedia(db.prepare('SELECT * FROM media WHERE id = ?').get(id)) };
       }
 
       if (type === 'series') {
@@ -179,7 +180,7 @@ async function uploadRoutes(fastify) {
         }
 
         const episode = db.prepare('SELECT * FROM episodes WHERE id = ?').get(episodeId);
-        return { series: db.prepare('SELECT * FROM media WHERE id = ?').get(series.id), episode };
+        return { series: publicMedia(db.prepare('SELECT * FROM media WHERE id = ?').get(series.id)), episode: publicEpisode(episode) };
       }
     } catch (err) {
       try { fs.unlinkSync(filePath); } catch {}
@@ -229,16 +230,14 @@ async function uploadRoutes(fastify) {
       return reply.status(400).send({ error: 'Uploaded file must be an image' });
     }
 
-    let filePath = path.join(fileDir, `${media.id}-${imageType}-${nanoid()}.webp`);
+    const imageExtension = UPLOAD_IMAGE_FORMAT === 'jpeg' ? 'jpg' : 'webp';
+    let filePath = path.join(fileDir, `${media.id}-${imageType}-${nanoid()}.${imageExtension}`);
     try {
       if (fileMimeType.toLowerCase() === 'image/gif') {
         filePath = path.join(fileDir, `${media.id}-${imageType}-${nanoid()}.gif`);
         fs.renameSync(tempPath, filePath);
       } else {
-        await sharp(tempPath)
-          .rotate()
-          .webp({ quality: 85 })
-          .toFile(filePath);
+        await transformImage(tempPath, filePath, { rotate: true, format: UPLOAD_IMAGE_FORMAT });
         fs.unlinkSync(tempPath);
       }
     } catch (err) {
@@ -255,7 +254,7 @@ async function uploadRoutes(fastify) {
 
     await generateAllVariants(filePath, imageType);
 
-    return { media: db.prepare('SELECT * FROM media WHERE id = ?').get(media.id) };
+    return { media: publicMedia(db.prepare('SELECT * FROM media WHERE id = ?').get(media.id)) };
   });
 
   fastify.post('/api/media/:id/subtitles/upload', { preHandler: [authMiddleware, adminMiddleware], bodyLimit: 5 * 1024 * 1024 }, async (request, reply) => {

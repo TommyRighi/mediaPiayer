@@ -3,6 +3,7 @@ const { authMiddleware, mediaAuth } = require('../auth');
 const { streamVideo, streamHlsFile, isWithinAnyDir, MEDIA_DIRS } = require('../utils');
 const path = require('path');
 const fs = require('fs');
+const { publicMedia, publicEpisode } = require('../catalog-response');
 
 async function seriesRoutes(fastify) {
   fastify.get('/api/series/:id/episodes', { preHandler: authMiddleware }, async (request, reply) => {
@@ -40,7 +41,7 @@ async function seriesRoutes(fastify) {
       }
     }
 
-    return { series, seasons };
+    return { series: publicMedia(series), seasons: Object.fromEntries(Object.entries(seasons).map(([season, items]) => [season, items.map(publicEpisode)])) };
   });
 
   fastify.get('/api/episodes/:id/video', { preHandler: mediaAuth }, async (request, reply) => {

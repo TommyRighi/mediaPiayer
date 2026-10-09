@@ -4,7 +4,7 @@ Self-hosted Netflix-like media streaming that runs well on a Raspberry Pi and ca
 
 ## Requirements (all machines)
 
-- Node.js 24 LTS (or newer)
+- Node.js 20.19.x for Raspberry Pi Zero W, or Node.js 22/24 for other hosts. Frontend builds use Node.js 24.
 - npm
 - Git
 - Build tools for native modules (better-sqlite3, sharp)
@@ -22,12 +22,19 @@ sudo apt install -y git build-essential python3 pkg-config \
   libsqlite3-dev libvips-dev ffmpeg
 ```
 
-2. Install Node.js 24 LTS:
+2. Install Node.js 24 LTS on ARM64/ARMv7 hosts. On the original Pi Zero W (ARMv6), use Raspberry Pi OS Node.js 20.19.x instead; the NodeSource command below does not apply to ARMv6:
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs
 ```
+
+For Raspberry Pi Zero W, build the frontend on another machine or in GitHub Actions.
+Install only the backend dependencies on the Pi with `npm ci --omit=dev --omit=optional`.
+Set `IMAGE_BACKEND=ffmpeg` in `.env`; images use system FFmpeg because sharp's ARM
+binaries require ARMv7. Cover uploads use JPEG on ARMv6. Build better-sqlite3, bcrypt and diskusage from source for
+ARMv6, with `npm_config_jobs=1` to limit memory usage. Never copy native modules
+from the build machine.
 
 3. Clone the repo and install dependencies:
 

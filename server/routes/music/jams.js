@@ -2,6 +2,8 @@ const { nanoid } = require('nanoid');
 const { getDb } = require('../../db');
 const { authMiddleware, authenticate, readAuthToken } = require('../../auth');
 const { getFeatures } = require('../../features');
+const { guardSocket } = require('../../socket-security');
+const { publicTrack } = require('../../catalog-response');
 const jamSockets = new Map();
 const fail = (statusCode, message) => { throw { statusCode, message }; };
 const nowPosition = (jam, now = Date.now()) => Math.max(0, jam.position + (jam.is_playing ? Math.max(0, now - jam.updated_at_ms) / 1000 : 0));
@@ -9,7 +11,7 @@ const nowPosition = (jam, now = Date.now()) => Math.max(0, jam.position + (jam.i
 function queue(id) {
   return getDb().prepare(`SELECT q.id AS entry_id,q.added_by,q.position AS queue_position,t.*,u.display_name AS added_by_name
     FROM music_jam_queue q JOIN music_tracks t ON t.id=q.track_id LEFT JOIN users u ON u.id=q.added_by
-    WHERE q.jam_id=? ORDER BY q.position,q.id`).all(id);
+    WHERE q.jam_id=? ORDER BY q.position,q.id`).all(id).map(publicTrack);
 }
 function requireJam(id, userId) {
   const db = getDb();
@@ -166,10 +168,13 @@ async function jamsRoutes(fastify) {
       socket.authToken = token; socket.authUserId = user.id; socket.authSessionId = user.sessionId;
     } catch { socket.close(4001,'Join with a valid account first'); return; }
     const id = request.params.id;
+    const allowMessage = guardSocket(socket, socket.authUserId, `jam:${id}`);
+    if (!allowMessage) return;
     if (!jamSockets.has(id)) jamSockets.set(id,new Set());
     const sockets = jamSockets.get(id); sockets.add(socket);
     socket.send(JSON.stringify(snapshot(id)));
     socket.on('message', data => {
+      if (!allowMessage(data)) return;
       // Only bounded clock pings are accepted; state changes use the authenticated API.
       if (data.length > 1024) { socket.close(1009,'Message too large'); return; }
       try { const msg=JSON.parse(data.toString()); if (msg.type==='ping' && Number.isFinite(msg.sentAt)) socket.send(JSON.stringify({ type:'pong',sentAt:msg.sentAt,serverTime:Date.now() })); } catch { /* Ignore malformed pings. */ }

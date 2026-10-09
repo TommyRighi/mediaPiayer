@@ -137,8 +137,8 @@ export default function BrowsePage() {
     }
   }, [searchRequest, loading]);
 
-  const featured = media.find(item => item.file_path && item.file_size > 0 && !['pending', 'converting', 'paused', 'failed'].includes(item.transcode_status) && !['downloading', 'importing', 'failed'].includes(item.download_status)) || media[0];
-  const featuredPlayable = featured?.file_path && featured.file_size > 0 && !['pending', 'converting', 'paused', 'failed'].includes(featured.transcode_status) && !['downloading', 'importing', 'failed'].includes(featured.download_status);
+  const featured = media.find(item => item.has_file && item.file_size > 0 && !['pending', 'converting', 'paused', 'failed'].includes(item.transcode_status) && !['downloading', 'importing', 'failed'].includes(item.download_status)) || media[0];
+  const featuredPlayable = featured?.has_file && featured.file_size > 0 && !['pending', 'converting', 'paused', 'failed'].includes(featured.transcode_status) && !['downloading', 'importing', 'failed'].includes(featured.download_status);
   const movies = media.filter(m => m.type === 'movie');
   const series = media.filter(m => m.type === 'series');
   const continueWatching = history.filter(h => !h.completed && h.type);
@@ -155,7 +155,7 @@ export default function BrowsePage() {
   return (
     <div>
       {featured && browsing && (
-        <div className="jf-backdrop" style={featured.backdrop_path ? { backgroundImage: `url(${api.media.backdropUrl(featured.id, 'md')})` } : { background: 'linear-gradient(to bottom right, var(--jf-surface-elevated), var(--jf-bg))' }}>
+        <div className="jf-backdrop" style={featured.has_backdrop ? { backgroundImage: `url(${api.media.backdropUrl(featured.id, 'md')})` } : { background: 'linear-gradient(to bottom right, var(--jf-surface-elevated), var(--jf-bg))' }}>
           <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--jf-bg) 0%, rgba(20,20,20,0.6) 40%, transparent 100%)' }} />
           <div className="absolute inset-0 flex items-end pb-12 md:pb-20 px-4 md:px-8">
             <div className="max-w-lg">
@@ -255,8 +255,8 @@ export default function BrowsePage() {
             ...h,
             id: h.media_id,
             type: h.type,
-            poster_path: h.poster_path,
-            backdrop_path: h.backdrop_path,
+            has_poster: h.has_poster,
+            has_backdrop: h.has_backdrop,
             duration: h.duration,
             watchProgress: h,
             watchUrl: h.episode_id ? `/watch/${h.media_id}/${h.episode_id}` : `/watch/${h.media_id}`,

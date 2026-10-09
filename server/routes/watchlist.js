@@ -1,9 +1,10 @@
 const { getDb } = require('../db');
 const { authMiddleware } = require('../auth');
+const { publicMedia } = require('../catalog-response');
 
 module.exports = async function watchlistRoutes(app) {
   app.get('/api/watchlist', { preHandler: authMiddleware }, async request => ({
-    media: getDb().prepare(`SELECT m.* FROM user_watchlist w JOIN media m ON m.id=w.media_id WHERE w.user_id=? ORDER BY w.created_at DESC, m.id`).all(request.user.id),
+    media: getDb().prepare(`SELECT m.* FROM user_watchlist w JOIN media m ON m.id=w.media_id WHERE w.user_id=? ORDER BY w.created_at DESC, m.id`).all(request.user.id).map(publicMedia),
   }));
   app.put('/api/watchlist/:id', { preHandler: authMiddleware }, async (request, reply) => {
     const db = getDb();

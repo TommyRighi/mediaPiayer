@@ -208,7 +208,7 @@ export function PlayerProvider({ children }) {
         } else if (preparing.current) {
           preparing.current = false; setAudioStatus(''); setStreamAttempt(value => value + 1);
           if (!jamId) setPlaying(true);
-        } else if (!track.playback_path && audioRef.current && !audioRef.current.canPlayType({ mp3:'audio/mpeg',flac:'audio/flac',ogg:'audio/ogg',wav:'audio/wav',m4a:'audio/mp4',aac:'audio/aac',opus:'audio/ogg; codecs=opus',wma:'audio/x-ms-wma' }[track.file_path.split('.').pop().toLowerCase()] || '')) {
+        } else if (!track.has_playback && audioRef.current && !audioRef.current.canPlayType({ mp3:'audio/mpeg',flac:'audio/flac',ogg:'audio/ogg',wav:'audio/wav',m4a:'audio/mp4',aac:'audio/aac',opus:'audio/ogg; codecs=opus',wma:'audio/x-ms-wma' }[track.audio_format] || '')) {
           preparing.current = true; setPlaying(false); setAudioStatus('Preparing audio'); await api.music.tracks.prepare(trackId);
           if (!cancelled) timer = setTimeout(check,5000);
         } else timer = setTimeout(check,10000);
