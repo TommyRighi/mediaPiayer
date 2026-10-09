@@ -1,11 +1,18 @@
 name: Desktop installers
 on:
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: Platforms to build
+        type: choice
+        default: all
+        options: [all, linux]
 permissions:
   contents: read
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-14
@@ -26,31 +33,61 @@ jobs:
             target: windows-amd64
             csc_link: WINDOWS_CSC_LINK
             csc_password: WINDOWS_CSC_KEY_PASSWORD
+          - os: ubuntu-24.04
+            platform: linux
+            arch: x64
+            target: linux-amd64
+            csc_link: LINUX_CSC_LINK
+            csc_password: LINUX_CSC_KEY_PASSWORD
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+            target: linux-arm64
+            csc_link: LINUX_CSC_LINK
+            csc_password: LINUX_CSC_KEY_PASSWORD
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        if: inputs.platforms != 'linux' || matrix.platform == 'linux'
       - uses: actions/setup-node@v4
+        if: inputs.platforms != 'linux' || matrix.platform == 'linux'
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - uses: actions/setup-go@v5
+        if: inputs.platforms != 'linux' || matrix.platform == 'linux'
         with:
           go-version-file: desktop/helper/go.mod
           cache-dependency-path: desktop/helper/go.sum
       - run: npm ci
+        if: inputs.platforms != 'linux' || matrix.platform == 'linux'
         working-directory: desktop
       - run: npm test
+        if: inputs.platforms != 'linux' || matrix.platform == 'linux'
         working-directory: desktop
       - run: go test ./...
+        if: inputs.platforms != 'linux' || matrix.platform == 'linux'
         working-directory: desktop/helper
+      - name: Install Linux desktop test dependencies
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64
+      - name: Verify Linux onboarding with sandbox
+        if: matrix.platform == 'linux'
+        working-directory: desktop
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          xvfb-run -a npm run smoke
       - run: npm run helper:build
+        if: inputs.platforms != 'linux' || matrix.platform == 'linux'
         working-directory: desktop
         env:
           HELPER_TARGETS: ${{ matrix.target }}
       - run: npm run licenses
+        if: inputs.platforms != 'linux' || matrix.platform == 'linux'
         working-directory: desktop
       - run: npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }}
+        if: inputs.platforms != 'linux' || matrix.platform == 'linux'
         working-directory: desktop
         env:
           CSC_LINK: ${{ secrets[matrix.csc_link] }}
@@ -59,12 +96,15 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       - uses: actions/upload-artifact@v4
+        if: inputs.platforms != 'linux' || matrix.platform == 'linux'
         with:
           name: mediapiayer-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             desktop/release/*.dmg
             desktop/release/*.zip
             desktop/release/*.exe
+            desktop/release/*.AppImage
+            desktop/release/*.deb
             desktop/release/*.blockmap
             desktop/release/*.yml
           if-no-files-found: error

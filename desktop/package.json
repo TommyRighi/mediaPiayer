@@ -14,7 +14,8 @@
     "dist:mac": "npm run helper:build && npm run licenses && electron-builder --mac",
     "dist:win": "npm run helper:build && npm run licenses && electron-builder --win --x64",
     "licenses": "node scripts/licenses.cjs",
-    "smoke": "electron tests/smoke.cjs"
+    "smoke": "electron tests/smoke.cjs",
+    "dist:linux": "npm run helper:build && npm run licenses && electron-builder --linux"
   },
   "devDependencies": {
     "electron": "44.7.0",
@@ -63,6 +64,14 @@
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "toolsets": {
       "nsis": "1.2.1"
+    },
+    "linux": {
+      "category": "AudioVideo",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "maintainer": "MediaPiayer"
     }
   },
   "overrides": {
